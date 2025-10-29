@@ -1,0 +1,6 @@
+# prop_name, value
+name,python_dependency
+description,Python's package dependency networks. Nodes in the network are Python's packages registered to PyPI and edges are dependencies among packages.
+citation,"['http://kgullikson88.github.io/blog/pypi-analysis.html, http://kgullikson88.github.io/blog/pypi-analysis.html']"
+url,http://kgullikson88.github.io/blog/pypi-analysis.html
+tags,"['Technological', 'Software', 'Unweighted']"
