@@ -11,16 +11,19 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
     """Creates SIR model and visualizes it if enabled
     
     """
+    #stores the states for each step in the simulation 
     nodelist_total = []
     nodecolors_total = []
     edgecolors_total = []
-    # Ensure state is initialized
+    # Ensure state is initialized (starts at 0)
     if nx.get_node_attributes(G, 'state') == {}:
         nx.set_node_attributes(G, 0, 'state')
 
+    #if none is chosen to be targeted, choose random
     if init_infected is None:
         init_infected = np.random.choice(list(G.nodes), 1)[0]
     
+    #infects the random one
     G.nodes[init_infected]['state'] = 1
 
     # Visualization options
@@ -30,6 +33,9 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
     infected_color = np.array([1, 0, 0, 1])
     removed_color = np.array([0, 0, 1, 1])
 
+    '''singelton is an attribute under each node, for the number of singeltons pointing to a node, and then assigns 
+    a value of s = to the number of singelton pointing to the parent node, then the following function gets the color
+    for each singelton edge'''
     def get_singleton_edgecolor(node_num):
         x = G.nodes[node_num]
         if not doSingletonReduction or not doVisualizeSingletonReduction:
@@ -83,6 +89,7 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
         if state == 1:
             infected_list.add(i)
     
+    #keeps track of if a node has singeltons affecred
     has_infected_singletons = set()
     if doSingletonReduction:
         for i, inf_sng in G.nodes.data('i_singletons'):
@@ -90,7 +97,7 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
                 has_infected_singletons.add(i)
 
     # Run model
-    if doVisualization:
+    if doVisualization: #saves the colors of the nodes
         nodelist = list(G.nodes())
         node_colors = []
         edge_colors = []
@@ -127,7 +134,7 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
         # >>> Infection and recovery
         if doSingletonReduction:
             print("Recovering singletons...")
-            temp_infsng_list = list(has_infected_singletons)
+            temp_infsng_list = list(has_infected_singletons) #temporary infected singelton list
             for i in temp_infsng_list:
                 inf_sng = G.nodes[i]['i_singletons']
                 if inf_sng > 0:
