@@ -8,6 +8,7 @@ import os
 import copy
 from multiprocessing import Pool, cpu_count
 
+# Set the colors for simulation
 init_susceptible_color = np.array([0.1, 1, 0.1, 1])
 susceptible_color = np.array([0.1, 1, 0.1, 1])
 infected_color = np.array([1, 0.1, 0.1, 1])
@@ -15,46 +16,83 @@ removed_color = np.array([0.1, 0.1, 1, 1])
 quarantined_color = np.array([0.5, 0.5, 0.5, 1])
 
 def sir_model(G, 
-              pos, 
-              init_infected: int = None, 
+              G_full,
+              init_infected: list = None, 
               max_steps: int = 100, 
               infection_rate: float = 0.2, 
               recovery_rate: float = 0.05, 
-              noticeability_rates: float = None, # A tuple, where first value is before virus found, second value after virus found -- increased awareness!
+              noticeability_rates: tuple = None, 
+              quarantine_length: int = None,
+              network_type: str = "full", 
               doVisualization: bool = True, 
-              doSingletonReduction: bool = True, 
+              doSingletonReduction: bool = True,
+              doVisualizeIsolates: bool = False,
               doVisualizeSingletonReduction: bool = True,
-              doRenderInfoText: bool = True):
+              doRenderInfoText: bool = True,
+              ):
     """
     Simulates SIR model and returns visualization information and singleton reduction if needed.
+    May perform quarantining, and render text.
+
+    Parameters
+    ----------
+    G: graph
+        A networkx graph object containing all observed nodes. It should 
+    pos: idk
+        Networkx object containing position information of nodes for visualization.
+    init_infected: list
+        A list of nodes to initially be infected. If an empty list, or None passed, a list containing a single random node from the observed nodes is chosen.
+    max_steps: int
+        Maximum number of steps the simulation takes if early stopping mechanism not activated.
+    infection_rate: float
+        Base/default value for the likelihood an infected node passes infection to an adjacent node.
+    recovery_rate: float
+        Base/default value for the likelihood an infetced node recovers from its infection and becomes removed.
+    noitceability_rates: tuple
+        A tuple of two values. Noticeability refers to the likelihood that an authority notices a virus is in a library.
+        The first value represents the noticeability rate before the virus is found. The second value represents the rate after.
+        Quarantining is not performed if set to None.
+    quarantine_length: int
+        For how long
+    network_type: str
+        Takes on the values "full" or "ego". "full" means all nodes of the network have been used. "ego" refers to the fact an ego network was used.
+    doVisualization: bool
+        Whether or not visualization should be done.
+    doSingletonReduction: bool
+        Whether or not singleton reduction should be performed. Singletons are nodes with in-degree 1 and out-degree 0.
+        Singletons can only be infected, but can't infect, thus through singleton reduction, they are represented as only numbers under their parent node or as an average edge color of a node.
+    doVisualizeSingletonReduction: bool
+        Whether or not to visualize singletons as their average color around their parent node. Otherwise, they aren't visualized at all.
+    doRenderInfoText: bool
+        Whether or not render simulation information as text in the output for visualization.
+
+    Returns
+    -------
+    wip
     """
     if not doVisualization:
         doRenderInfoText = False
         doVisualizeSingletonReduction = False
+        doVisualizeIsolates = False
 
     # Stores the states for each step in the simulation
     nodelist_total = []
     nodecolors_total = []
     edgecolors_total = []
-    infotext_total = [] # Tuples of form: (susceptible, infected, recovered, quarantined)
-    singletons_total = []
-    #if none is chosen to be targeted, choose random
-    if init_infected is None:
-        init_infected = np.random.choice(list(G.nodes), 1)[0]
-    # I need to create an ego graph in order to only grab susceptible singletons within the network
-    if init_infected:
-        G_2 = copy.deepcopy(G)
-        G_2 = nx.ego_graph(G, n=init_infected, radius=9999)
+    infotext_total = [] # A list of dictionaries, describing the state of the simulation
+    constants_total = {}
+    
+    # If none is chosen to be targeted, choose one random node
+    if init_infected is None or len(init_infected) == 0:
+        init_infected = list(np.random.choice(list(G.nodes), 1)[0])
+
     # Ensure state is initialized (starts at 0)
     if nx.get_node_attributes(G, 'state') == {}:
         nx.set_node_attributes(G, 0, 'state')
-
-    # If none is chosen to be targeted, choose random
-    if init_infected is None:
-        init_infected = np.random.choice(list(G.nodes), 1)[0]
     
-    # infects the random one
-    G.nodes[init_infected]['state'] = 1
+    # Infects the chosen random nodes
+    for node in init_infected:
+        G.nodes[node]['state'] = 1
 
     # Visualization options
     options = {"node_size": 20}
@@ -64,13 +102,13 @@ def sir_model(G,
     global removed_color
     global quarantined_color
 
-    def get_singleton_edgecolor(node_num, quarantined_list):
+    def get_singleton_edgecolor(node_num, quarantined_list=None):
         """
         Under each node, there is an attribute for each state every child singleton can be in, and how many singletons are in.
         The following function gets the average color of all the singletons for the purpose of rendering the edge color of the
         parent node.
         """
-        if node_num in quarantined_list:
+        if not quarantined_list == None and node_num in quarantined_list:
             return quarantined_color
         x = G.nodes[node_num]
         if not doSingletonReduction or not doVisualizeSingletonReduction:
@@ -103,7 +141,7 @@ def sir_model(G,
 
     # Keep track of origin nodes of quarantine - levels of contact tracing 'spread' from them
     quarantined_origin_list = set() # Nodes that are within quarantine don't get infected and don't spread, singletons don't get quarantined
-    virusFound = noticeability_rates == None
+    virusFound = noticeability_rates == None # If no quarantining, then virus instantly noticed by authority
 
     if doVisualization: # Saves the colors of the nodes
         nodelist = list(G.nodes())
@@ -124,59 +162,73 @@ def sir_model(G,
         edgecolors_total.append(edge_colors)
 
 
-    # Appending the initial state of the singletons to a list for visualization purposes
-    susceptible_singletons_outside = sum(x[1] for x in G.nodes.data('s_singletons')) if doSingletonReduction else 0
-    susceptible_singletons_within = sum(x[1] for x in G_2.nodes.data('s_singletons')) if doSingletonReduction else 0
-    susceptible_singletons_outside = susceptible_singletons_outside - susceptible_singletons_within
-    infected_singletons = sum(x[1] for x in G.nodes.data('i_singletons')) if doSingletonReduction else 0
-    recovered_singletons = sum(x[1] for x in G.nodes.data('r_singletons')) if doSingletonReduction else 0
-    singletons_total.append((susceptible_singletons_within, infected_singletons, recovered_singletons, susceptible_singletons_outside))
+    # >>> Save initial state information
+    susceptible_total = len(G) - len(init_infected)
+    # > Constant
+    # Total Nodes
+    if network_type == "ego":
+        constants_total['tn'] = len(G)
+    elif network_type == "full":
+        constants_total['tn'] = len(G_full)
+    constants_total['xt'] = len(list(nx.isolates(G)))
 
+    # > Variable
+    infotext = {}
 
+    infotext['ssw'] = sum([x[1] for x in G.nodes.data('s_singletons')])
+    infotext['sso'] = sum([x[1] for x in G_full.nodes.data('s_singletons')]) - infotext['ssw']
+    # if network_type == "full":
 
+    infotext['st'] = susceptible_total
+    infotext['it'] = len(init_infected)
+    infotext['rt'] = 0
+    infotext['qt'] = 0
+    if doSingletonReduction:
+        infotext['ss'] = infotext['ssw'] + infotext['sso']
+        infotext['st'] += infotext['ss']
+        infotext['is'] = 0
+        infotext['rs'] = 0
+    infotext_total.append(dict(infotext))
 
-    print("Running model...")
-
-    total_susceptible_singletons = sum(x[1] for x in G.nodes.data('s_singletons')) if doSingletonReduction else 0
-    total_susceptible = len(G) + total_susceptible_singletons - len(infected_list)
-    total_recovered = 0
+    """    
+    'tn': total_nodes,
+    'st': susceptible_total,
+    'it': infected_total,
+    'rt': recovered_total,
+    'qt': quarantined_total,
+    'ssw': susceptible_singletons_within,
+    'sso': susceptible_singletons_outside,
+    'is': susceptible_singletons,
+    'is': infected_singletons,
+    'rs': recovered_singletons,
+    'xt': isolated_total,
+    """
 
     # Run model
+    print("Running model...")
     for step in range(max_steps):
         nodes_to_draw = set(sorted(list(G.nodes())))
-        # Appending the state of singletons for every single step the model uses
-        susceptible_singletons_within = sum(x[1] for x in G_2.nodes.data('s_singletons')) if doSingletonReduction else 0
-        infected_singletons = sum(x[1] for x in G.nodes.data('i_singletons')) if doSingletonReduction else 0
-        recovered_singletons = sum(x[1] for x in G.nodes.data('r_singletons')) if doSingletonReduction else 0
-        susceptible_singletons_within = susceptible_singletons_within - infected_singletons - recovered_singletons
-        singletons_total.append((susceptible_singletons_within, infected_singletons, recovered_singletons, susceptible_singletons_outside))
-        infected_non_singletons = len(infected_list)
-        total_infected = infected_non_singletons + infected_singletons
 
+        # Update quarantined list
         quarantined_list = set()
         for origin in quarantined_origin_list:
             quarantined_list.add(origin)
             adj = G.neighbors(origin)
             for neighbor in adj:
                 quarantined_list.add(neighbor)
+        infotext['qt'] = len(quarantined_list)
 
-        if virusFound:
-            noticeability_rate = noticeability_rates[1]
-        else:
-            noticeability_rate = noticeability_rates[0]
+        noticeability_rate = noticeability_rates[1] if virusFound else noticeability_rates[0]
 
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         print(f"Step: {step}")
-        print(f"Infected left: {total_infected}")
-        print(f"> Non-singletons infected: {infected_non_singletons}")
-        print(f"> Singletons infected: {infected_singletons}")
-        
-        # Save info about network as output
-        # if doRenderInfoText:
-        #     infotext_total.append((total_susceptible, total_infected, total_recovered, 0)) 
+        print(f"Infected left: {infotext['it']}")
+        if doSingletonReduction:
+            print(f"> Non-singletons infected: {infotext['it']-infotext['is']}")
+            print(f"> Singletons infected: {infotext['is']}")
 
         # Early Stopping
-        if infected_non_singletons == 0 and infected_singletons == 0:
+        if infotext['it']-infotext['is'] == 0 and infotext['is'] == 0:
             break
 
         # >>> Infection, recovery and noticeability
@@ -187,16 +239,16 @@ def sir_model(G,
                 inf_sng = G.nodes[i]['i_singletons']
                 if inf_sng > 0:
                     temp = np.random.binomial(n=inf_sng, p=recovery_rate)
-                    if temp > 0:
-                        G.nodes[i]['i_singletons'] -= temp
-                        G.nodes[i]['r_singletons'] += temp
-                        total_recovered += temp
-                        if doVisualization:
-                            nodes_to_draw.add(i)
 
-                    # > Noticeability and quarantine
-                    # temp_noticed = np.random.binomial(n=temp, p=noticeability_rate)
-                    # if temp_noticed > 0:
+                    G.nodes[i]['i_singletons'] -= temp
+                    G.nodes[i]['r_singletons'] += temp
+                    
+                    infotext['is'] -= temp
+                    infotext['it'] -= temp
+                    infotext['rs'] += temp
+                    infotext['rt'] += temp
+                    if doVisualization and temp > 0:
+                        nodes_to_draw.add(i)
                 else:
                     has_infected_singletons.remove(i)
 
@@ -209,20 +261,22 @@ def sir_model(G,
         for i in temp_inf_list:
             # Quarantine current infected node
             if np.random.sample() < noticeability_rate and not i in quarantined_list:
-                # print(f"Noticed {i}!")
                 quarantined_origin_list.add(i)
                 quarantined_list.add(i)
                 virusFound = True
 
-            isQuarantined = i in quarantined_list
             # Infect adjacent nodes
+            isQuarantined = i in quarantined_list
             if not isQuarantined:
                 adj = G.neighbors(i)
                 for j in adj:
                     if G.nodes[j].get('state', 0) == 0 and np.random.sample() < infection_rate:
                         infected_list.add(j)
                         G.nodes[j]['state'] = 1
-                        total_susceptible -= 1
+
+                        infotext['st'] -= 1
+                        infotext['it'] += 1
+                        
                         if doVisualization:
                             nodes_to_draw.add(j)
 
@@ -233,7 +287,13 @@ def sir_model(G,
                     has_infected_singletons.add(i)
                     G.nodes[i]['s_singletons'] -= temp
                     G.nodes[i]['i_singletons'] += temp
-                    total_susceptible -= temp
+
+                    infotext['st'] -= temp
+                    infotext['it'] += temp
+                    infotext['ss'] -= temp
+                    infotext['ssw'] -= temp
+                    infotext['is'] += temp
+                    
                     if doVisualization:
                         nodes_to_draw.add(i)
 
@@ -241,7 +301,10 @@ def sir_model(G,
             if np.random.sample() < recovery_rate and virusFound:
                 infected_list.remove(i)
                 G.nodes[i]['state'] = 2
-                total_recovered += 1
+
+                infotext['it'] -= 1
+                infotext['rt'] += 1
+                
                 if doVisualization:
                     nodes_to_draw.add(i)
 
@@ -260,23 +323,22 @@ def sir_model(G,
             nodelist_total.append(nodelist)
             nodecolors_total.append(node_colors)
             edgecolors_total.append(edge_colors)
-    if doSingletonReduction:
-        return nodelist_total, nodecolors_total, edgecolors_total, options, singletons_total
-    else:
-        return nodelist_total, nodecolors_total, edgecolors_total, options
-    
-def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options, visualizeEdges: bool = False, isolatedNodes: list = None, init_infected: int = None, singletons_total: list = None):
+
+            infotext['it'] = len(infected_list)
+
+            infotext_total.append(dict(infotext))
+
+    if doRenderInfoText:
+        return nodelist_total, nodecolors_total, edgecolors_total, options, infotext_total, constants_total
+    return nodelist_total, nodecolors_total, edgecolors_total, options
+
+def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options, infotext_total: list = None, constants_total: dict = None):
     import matplotlib.pyplot as plt
     import networkx as nx
     import numpy as np
     
     print(f"Starting graph image: {i}")
     fig, ax = plt.subplots()
-    
-    if init_infected and isolatedNodes:
-        G_2 = copy.deepcopy(G)
-        G_2 = nx.ego_graph(G, n=init_infected, radius=9999)
-        isolatedNew = isolatedNodes + (len(G.nodes()) - len(G_2.nodes()))
     
     global susceptible_color
     global infected_color
@@ -320,45 +382,25 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
                 **options
             )
             
-
-    # plt.text(0, 1, "Susceptible: " + str(infotext_total[i][0]) + '\n' + 
-    #                   "Infected: " + str(infotext_total[i][1]) + '\n' + 
-    #                   "Recovered: " + str(infotext_total[i][2]) + '\n', 
-    #                   horizontalalignment='left', verticalalignment='center', transform=ax.transAxes)
-
     ax.axis("off")
-    fig.text(-0.15, 0.95, s=f"Step: {i+1}")
-    # Printing the numbers including the singletons if they are present
-    if isolatedNodes == None:
-            temp_isolatedNodes = 0
-    if singletons_total:
-        fig.text(-0.15, 0.9, s=f"Total Nodes = {len(G.nodes()) + temp_isolatedNodes + singletons_total[i][0] + singletons_total[i][1] + singletons_total[i][2] + singletons_total[i][3]}")
-        fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes())) + singletons_total[i][0]}")
-        fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes()) - len(G_2.nodes())) + singletons_total[i][0]}")
-        fig.text(-0.15, 0.8, s=f"Infected Nodes: {len(state_to_nodes[1]) + singletons_total[i][1]}")
-        fig.text(-0.15, 0.75, s=f"Recovered Nodes: {len(state_to_nodes[2]) + singletons_total[i][2]}")
-        if isolatedNodes:
-            if not init_infected:
-                fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNodes}")
-            if init_infected:
-                fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNew + singletons_total[i][3]}")
-        
-        print(singletons_total[i])
-    # Printing the numbers without the singletons if they are not present
-    else:
-        fig.text(-0.15, 0.9, s=f"Total Nodes = {len(G.nodes()) + temp_isolatedNodes}")
-        # fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes()) - len(G_2.nodes()))}")
-        fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes()))}")
-        fig.text(-0.15, 0.8, s=f"Infected Nodes: {len(state_to_nodes[1])}")
-        fig.text(-0.15, 0.75, s=f"Recovered Nodes: {len(state_to_nodes[2])}")
-        if isolatedNodes:
-            if not init_infected:
-                fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNodes}")
-            if init_infected:
-                fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNew}")
+
+    if not infotext_total is None:
+        info = infotext_total[i]
+        text_to_render = ""
+        text_to_render += f"\nStep: {i+1}" 
+        text_to_render += f"\nTotal Nodes: {constants_total['tn']}"
+        text_to_render += f"\nTotal Susceptible: {info['st']}"
+        text_to_render += f"\nTotal Infected: {info['it']}"
+        text_to_render += f"\nTotal Recovered: {info['rt']}"
+        text_to_render += f"\nTotal Quarantined: {info['qt']}"
+        text_to_render += f"\nTotal Isolated: {constants_total['xt']}"
+        text_to_render += f"\nSusceptible Singletons: {info['ssw']}" # or ['ss']
+        text_to_render += f"\nInfected Singletons: {info['is']}"
+        text_to_render += f"\nRecovered Singletons: {info['rs']}"
+    plt.text(-0.25, 0.95, s=text_to_render, horizontalalignment='left', verticalalignment='center', transform=ax.transAxes)
+
     fig.subplots_adjust(left=0.2) 
     fig.tight_layout()
     fig.savefig(f"graphs/graph_{i}.png", format="PNG", bbox_inches='tight')
     print(f"Saved graph_{i}.png!")
     plt.close(fig)
-
