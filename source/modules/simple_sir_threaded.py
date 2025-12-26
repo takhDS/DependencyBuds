@@ -7,43 +7,68 @@ import matplotlib.pyplot as plt
 import os
 from multiprocessing import Pool, cpu_count
 
-def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection_rate: float = 0.2, recovery_rate: float = 0.05, doVisualization: bool = True, doSingletonReduction: bool = True, doVisualizeSingletonReduction: bool = True):
-    """Creates SIR model and visualizes it if enabled
-    
+init_susceptible_color = np.array([0.1, 1, 0.1, 1])
+susceptible_color = np.array([0.1, 1, 0.1, 1])
+infected_color = np.array([1, 0.1, 0.1, 1])
+removed_color = np.array([0.1, 0.1, 1, 1])
+quarantined_color = np.array([0.5, 0.5, 0.5, 1])
+
+def sir_model(G, 
+              pos, 
+              init_infected: int = None, 
+              max_steps: int = 100, 
+              infection_rate: float = 0.2, 
+              recovery_rate: float = 0.05, 
+              noticeability_rates: float = None, # A tuple, where first value is before virus found, second value after virus found -- increased awareness!
+              doVisualization: bool = True, 
+              doSingletonReduction: bool = True, 
+              doVisualizeSingletonReduction: bool = True,
+              doRenderInfoText: bool = True):
     """
-    #stores the states for each step in the simulation 
+    Simulates SIR model and returns visualization information and singleton reduction if needed.
+    """
+    if not doVisualization:
+        doRenderInfoText = False
+        doVisualizeSingletonReduction = False
+
+    # Stores the states for each step in the simulation
     nodelist_total = []
     nodecolors_total = []
     edgecolors_total = []
+    infotext_total = [] # Tuples of form: (susceptible, infected, recovered, quarantined)
     # Ensure state is initialized (starts at 0)
     if nx.get_node_attributes(G, 'state') == {}:
         nx.set_node_attributes(G, 0, 'state')
 
-    #if none is chosen to be targeted, choose random
+    # If none is chosen to be targeted, choose random
     if init_infected is None:
         init_infected = np.random.choice(list(G.nodes), 1)[0]
     
-    #infects the random one
+    # infects the random one
     G.nodes[init_infected]['state'] = 1
 
     # Visualization options
     options = {"node_size": 20}
-    init_susceptible_color = np.array([0, 1, 0, 0.5])
-    susceptible_color = np.array([0, 1, 0, 1])
-    infected_color = np.array([1, 0, 0, 1])
-    removed_color = np.array([0, 0, 1, 1])
+    global init_susceptible_color
+    global susceptible_color
+    global infected_color
+    global removed_color
+    global quarantined_color
 
-    '''singelton is an attribute under each node, for the number of singeltons pointing to a node, and then assigns 
-    a value of s = to the number of singelton pointing to the parent node, then the following function gets the color
-    for each singelton edge'''
-    def get_singleton_edgecolor(node_num):
+    def get_singleton_edgecolor(node_num, quarantined_list):
+        """
+        Under each node, there is an attribute for each state every child singleton can be in, and how many singletons are in.
+        The following function gets the average color of all the singletons for the purpose of rendering the edge color of the
+        parent node.
+        """
+        if node_num in quarantined_list:
+            return quarantined_color
         x = G.nodes[node_num]
         if not doSingletonReduction or not doVisualizeSingletonReduction:
             st = x.get('state', 0)
             if st == 0: return susceptible_color
             if st == 1: return infected_color
             return removed_color
-        
         singleton_sum = x.get('s_singletons', 0) + x.get('i_singletons', 0) + x.get('r_singletons', 0)
         if singleton_sum == 0:
             st = x.get('state', 0)
@@ -54,50 +79,24 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
             temp_color = x['s_singletons']*susceptible_color + x['i_singletons']*infected_color + x['r_singletons']*removed_color
             return temp_color / singleton_sum
 
-    # if doVisualization:
-    #     # Create graphs directory
-    #     if not os.path.exists("graphs"):
-    #         os.makedirs("graphs")
-            
-    #     # Draw network edges
-    #     print("Drawing network edges...")
-    #     nx.draw_networkx_edges(G, pos, width=0.2, alpha=0.25)
-
-    #     # Draw network nodes initially
-    #     s_nodes = [x[0] for x in G.nodes.data('state') if x[1] == 0]
-    #     i_nodes = [x[0] for x in G.nodes.data('state') if x[1] == 1]
-        
-    #     if s_nodes:
-    #         nx.draw_networkx_nodes(G, pos, nodelist=s_nodes, alpha=0.45, node_color=[init_susceptible_color], **options, edgecolors=[susceptible_color])
-        
-    #     if i_nodes:
-    #         e_color = susceptible_color if doVisualizeSingletonReduction else infected_color
-    #         nx.draw_networkx_nodes(G, pos, nodelist=i_nodes, node_color=[infected_color], **options, edgecolors=[e_color])
-
-    #     print("Done!")
-
-    #     # Export init graph
-    #     plt.axis("off")
-    #     plt.tight_layout()
-    #     print("Saving graph_0.png...")
-    #     plt.savefig("graphs/graph_0.png", format="PNG")
-    #     print("Done!")
-
     # Using sets to keep track of infected nodes
     infected_list = set()
     for i, state in G.nodes.data('state'):
         if state == 1:
             infected_list.add(i)
     
-    #keeps track of if a node has singeltons affecred
+    # Keeps track of whether or not a node has singletons infected
     has_infected_singletons = set()
     if doSingletonReduction:
         for i, inf_sng in G.nodes.data('i_singletons'):
             if inf_sng > 0:
                 has_infected_singletons.add(i)
 
-    # Run model
-    if doVisualization: #saves the colors of the nodes
+    # Keep track of origin nodes of quarantine - levels of contact tracing 'spread' from them
+    quarantined_origin_list = set() # Nodes that are within quarantine don't get infected and don't spread, singletons don't get quarantined
+    virusFound = noticeability_rates == None
+
+    if doVisualization: # Saves the colors of the nodes
         nodelist = list(G.nodes())
         node_colors = []
         edge_colors = []
@@ -108,33 +107,57 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
             elif st == 2:
                 node_colors.append(removed_color)
             else:
-                node_colors.append(susceptible_color)
-            edge_colors.append(get_singleton_edgecolor(n))
+                node_colors.append(init_susceptible_color)
+            edge_colors.append(get_singleton_edgecolor(n, quarantined_list=set()))
 
         nodelist_total.append(nodelist)
         nodecolors_total.append(node_colors)
         edgecolors_total.append(edge_colors)
+
     print("Running model...")
+
+    total_susceptible_singletons = sum(x[1] for x in G.nodes.data('s_singletons')) if doSingletonReduction else 0
+    total_susceptible = len(G) + total_susceptible_singletons - len(infected_list)
+    total_recovered = 0
+
+    # Run model
     for step in range(max_steps):
         nodes_to_draw = set(sorted(list(G.nodes())))
         
         infected_singletons = sum(x[1] for x in G.nodes.data('i_singletons')) if doSingletonReduction else 0
         infected_non_singletons = len(infected_list)
+        total_infected = infected_non_singletons + infected_singletons
+
+        quarantined_list = set()
+        for origin in quarantined_origin_list:
+            quarantined_list.add(origin)
+            adj = G.neighbors(origin)
+            for neighbor in adj:
+                quarantined_list.add(neighbor)
+
+        if virusFound:
+            noticeability_rate = noticeability_rates[1]
+        else:
+            noticeability_rate = noticeability_rates[0]
 
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         print(f"Step: {step}")
-        print(f"Infected left: {infected_non_singletons + infected_singletons}")
+        print(f"Infected left: {total_infected}")
         print(f"> Non-singletons infected: {infected_non_singletons}")
         print(f"> Singletons infected: {infected_singletons}")
+        
+        # Save info about network as output
+        if doRenderInfoText:
+            infotext_total.append((total_susceptible, total_infected, total_recovered, 0)) 
 
         # Early Stopping
         if infected_non_singletons == 0 and infected_singletons == 0:
             break
 
-        # >>> Infection and recovery
-        if doSingletonReduction:
+        # >>> Infection, recovery and noticeability
+        if doSingletonReduction and virusFound:
             print("Recovering singletons...")
-            temp_infsng_list = list(has_infected_singletons) #temporary infected singelton list
+            temp_infsng_list = list(has_infected_singletons) # Temporary infected singleton list
             for i in temp_infsng_list:
                 inf_sng = G.nodes[i]['i_singletons']
                 if inf_sng > 0:
@@ -142,8 +165,13 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
                     if temp > 0:
                         G.nodes[i]['i_singletons'] -= temp
                         G.nodes[i]['r_singletons'] += temp
+                        total_recovered += temp
                         if doVisualization:
                             nodes_to_draw.add(i)
+
+                    # > Noticeability and quarantine
+                    # temp_noticed = np.random.binomial(n=temp, p=noticeability_rate)
+                    # if temp_noticed > 0:
                 else:
                     has_infected_singletons.remove(i)
 
@@ -154,29 +182,41 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
             
         temp_inf_list = list(infected_list)
         for i in temp_inf_list:
+            # Quarantine current infected node
+            if np.random.sample() < noticeability_rate and not i in quarantined_list:
+                # print(f"Noticed {i}!")
+                quarantined_origin_list.add(i)
+                quarantined_list.add(i)
+                virusFound = True
+
+            isQuarantined = i in quarantined_list
             # Infect adjacent nodes
-            adj = G.neighbors(i)
-            for j in adj:
-                if G.nodes[j].get('state', 0) == 0 and np.random.sample() < infection_rate:
-                    infected_list.add(j)
-                    G.nodes[j]['state'] = 1
-                    if doVisualization:
-                        nodes_to_draw.add(j)
+            if not isQuarantined:
+                adj = G.neighbors(i)
+                for j in adj:
+                    if G.nodes[j].get('state', 0) == 0 and np.random.sample() < infection_rate:
+                        infected_list.add(j)
+                        G.nodes[j]['state'] = 1
+                        total_susceptible -= 1
+                        if doVisualization:
+                            nodes_to_draw.add(j)
 
             # Infect singletons
-            if doSingletonReduction:
+            if doSingletonReduction and not isQuarantined:
                 temp = np.random.binomial(n=G.nodes[i]['s_singletons'], p=infection_rate)
                 if temp > 0:
                     has_infected_singletons.add(i)
                     G.nodes[i]['s_singletons'] -= temp
                     G.nodes[i]['i_singletons'] += temp
+                    total_susceptible -= temp
                     if doVisualization:
                         nodes_to_draw.add(i)
 
             # Recover infected nodes
-            if np.random.sample() < recovery_rate:
+            if np.random.sample() < recovery_rate and virusFound:
                 infected_list.remove(i)
                 G.nodes[i]['state'] = 2
+                total_recovered += 1
                 if doVisualization:
                     nodes_to_draw.add(i)
 
@@ -189,15 +229,15 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
                 st = G.nodes[n].get('state', 0)
                 if st == 1: node_colors.append(infected_color)
                 elif st == 2: node_colors.append(removed_color)
-                else: node_colors.append(susceptible_color)
-                edge_colors.append(get_singleton_edgecolor(n))
+                else: node_colors.append(init_susceptible_color)
+                edge_colors.append(get_singleton_edgecolor(n, quarantined_list))
             
             nodelist_total.append(nodelist)
             nodecolors_total.append(node_colors)
             edgecolors_total.append(edge_colors)
-    return nodelist_total, nodecolors_total, edgecolors_total, options     
+    return nodelist_total, nodecolors_total, edgecolors_total, options, infotext_total
     
-def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options):
+def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options, infotext_total):
     import matplotlib.pyplot as plt
     import networkx as nx
     import numpy as np
@@ -205,12 +245,18 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options)
     print(f"Starting graph image: {i}")
     fig, ax = plt.subplots()
 
+    
+    global susceptible_color
+    global infected_color
+    global removed_color
+    global quarantined_color
     # Define SIR colors (RGBA)
     state_to_color = {
-        0: np.array([0, 1, 0, 1]),  # Susceptible
-        1: np.array([1, 0, 0, 1]),  # Infected
-        2: np.array([0, 0, 1, 1])   # Removed
+        0: susceptible_color,  # Susceptible
+        1: infected_color,  # Infected
+        2: removed_color   # Removed
     }
+    # plt.Circle((5, 5), 0.5, color='b', fill=False)
 
     # Group nodes by state
     state_to_nodes = {0: [], 1: [], 2: []}
@@ -241,6 +287,10 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options)
                 **options
             )
 
+    plt.text(0, 1, "Susceptible: " + str(infotext_total[i][0]) + '\n' + 
+                      "Infected: " + str(infotext_total[i][1]) + '\n' + 
+                      "Recovered: " + str(infotext_total[i][2]) + '\n', 
+                      horizontalalignment='left', verticalalignment='center', transform=ax.transAxes)
 
     ax.axis("off")
     fig.tight_layout()
