@@ -15,6 +15,13 @@ infected_color = np.array([1, 0.1, 0.1, 1])
 removed_color = np.array([0.1, 0.1, 1, 1])
 quarantined_color = np.array([0.5, 0.5, 0.5, 1])
 
+def get_accessible_sus_nodes(G, init_infected):
+    # init_infected is a list of the initially infected nodes
+    found = set()
+    for search in init_infected:
+        found.update(nx.descendants(G, search) | {search})
+    return found
+
 def sir_model(G, 
               G_full,
               init_infected: list = None, 
@@ -79,7 +86,7 @@ def sir_model(G,
     nodelist_total = []
     nodecolors_total = []
     edgecolors_total = []
-    infotext_total = [] # A list of dictionaries, describing the state of the simulation
+    infotext_total = [] # A list of dictionaries, describing the state of the step in the simulation
     constants_total = {}
     
     # If none is chosen to be targeted, choose one random node
@@ -164,40 +171,41 @@ def sir_model(G,
 
     # >>> Save initial state information
     susceptible_total = len(G) - len(init_infected)
+    accessible_sus_nodes = get_accessible_sus_nodes(G_full, init_infected)
     # > Constant
     # Total Nodes
     if network_type == "ego":
-        constants_total['tn'] = len(G)
+        constants_total['tn'] = len(G) + sum([x[1] for x in G.nodes.data('s_singletons')]) + sum([x[1] for x in G.nodes.data('i_singletons')])
     elif network_type == "full":
-        constants_total['tn'] = len(G_full)
-    constants_total['xt'] = len(list(nx.isolates(G)))
+        constants_total['tn'] = len(G_full) + sum([x[1] for x in G_full.nodes.data('s_singletons')]) + sum([x[1] for x in G_full.nodes.data('i_singletons')])
+    constants_total['xt'] = constants_total['tn'] - len(accessible_sus_nodes)
 
     # > Variable
     infotext = {}
 
-    infotext['ssw'] = sum([x[1] for x in G.nodes.data('s_singletons')])
+    # infotext['ssw'] = sum(G_full[i]['s_singletons'] for i in get_accessible_sus_nodes(G_full, init_infected))
+    infotext['ssw'] = sum(i[1] for i in G_full.nodes.data('s_singletons') if i[0] in accessible_sus_nodes)
     infotext['sso'] = sum([x[1] for x in G_full.nodes.data('s_singletons')]) - infotext['ssw']
     # if network_type == "full":
 
-    infotext['st'] = susceptible_total
     infotext['it'] = len(init_infected)
+    infotext['st'] = len(accessible_sus_nodes) - len(init_infected) + infotext['ssw']
     infotext['rt'] = 0
     infotext['qt'] = 0
     if doSingletonReduction:
-        infotext['ss'] = infotext['ssw'] + infotext['sso']
-        infotext['st'] += infotext['ss']
+        infotext['ss'] = infotext['ssw'] + infotext['sso'] + infotext['ssw']
         infotext['is'] = 0
         infotext['rs'] = 0
     infotext_total.append(dict(infotext))
 
     """    
-    'tn': total_nodes,
-    'st': susceptible_total,
+    'tn': total_nodes, (within and outside)
+    'st': susceptible_total, (within)
     'it': infected_total,
     'rt': recovered_total,
     'qt': quarantined_total,
-    'ssw': susceptible_singletons_within,
-    'sso': susceptible_singletons_outside,
+    'ssw': susceptible_singletons_within, ('within' means that these are the susceptible singletons accessible by a path from an init_infected)
+    'sso': susceptible_singletons_outside, ('outside' means that they are not accessible by any path from any of the init_infected)
     'is': susceptible_singletons,
     'is': infected_singletons,
     'rs': recovered_singletons,
@@ -221,11 +229,14 @@ def sir_model(G,
         noticeability_rate = noticeability_rates[1] if virusFound else noticeability_rates[0]
 
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        print(f"Step: {step}")
-        print(f"Infected left: {infotext['it']}")
-        if doSingletonReduction:
-            print(f"> Non-singletons infected: {infotext['it']-infotext['is']}")
-            print(f"> Singletons infected: {infotext['is']}")
+        print("[DEBUG] SS: ", infotext['ss'])
+        print("[DEBUG] SSW: ", infotext['ssw'])
+        print("[DEBUG] ST: ", infotext['st'])
+        # print(f"Step: {step}")
+        # print(f"Infected left: {infotext['it']}")
+        # if doSingletonReduction:
+        #     print(f"> Non-singletons infected: {infotext['it']-infotext['is']}")
+        #     print(f"> Singletons infected: {infotext['is']}")
 
         # Early Stopping
         if infotext['it']-infotext['is'] == 0 and infotext['is'] == 0:
@@ -233,7 +244,7 @@ def sir_model(G,
 
         # >>> Infection, recovery and noticeability
         if doSingletonReduction and virusFound:
-            print("Recovering singletons...")
+            print("[INFO] Recovering singletons...")
             temp_infsng_list = list(has_infected_singletons) # Temporary infected singleton list
             for i in temp_infsng_list:
                 inf_sng = G.nodes[i]['i_singletons']
@@ -253,9 +264,9 @@ def sir_model(G,
                     has_infected_singletons.remove(i)
 
         if doSingletonReduction:
-            print("Infecting singletons and neighbors + Recovering infected nodes...")
+            print("[INFO] Infecting singletons and neighbors + Recovering infected nodes...")
         else:
-            print("Infecting neighbors + Recovering infected nodes...")
+            print("[INFO] Infecting neighbors + Recovering infected nodes...")
             
         temp_inf_list = list(infected_list)
         for i in temp_inf_list:
@@ -392,8 +403,9 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
         text_to_render += f"\nTotal Susceptible: {info['st']}"
         text_to_render += f"\nTotal Infected: {info['it']}"
         text_to_render += f"\nTotal Recovered: {info['rt']}"
-        text_to_render += f"\nTotal Quarantined: {info['qt']}"
         text_to_render += f"\nTotal Isolated: {constants_total['xt']}"
+        text_to_render += "\n" + "~"*10
+        text_to_render += f"\nTotal Quarantined: {info['qt']}"
         text_to_render += f"\nSusceptible Singletons: {info['ssw']}" # or ['ss']
         text_to_render += f"\nInfected Singletons: {info['is']}"
         text_to_render += f"\nRecovered Singletons: {info['rs']}"
