@@ -5,6 +5,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import os
+import copy
 from multiprocessing import Pool, cpu_count
 
 def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection_rate: float = 0.2, recovery_rate: float = 0.05, doVisualization: bool = True, doSingletonReduction: bool = True, doVisualizeSingletonReduction: bool = True):
@@ -199,14 +200,17 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
             edgecolors_total.append(edge_colors)
     return nodelist_total, nodecolors_total, edgecolors_total, options     
     
-def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options, visualizeEdges: bool = False, isolatedNodes: list = None):
+def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options, visualizeEdges: bool = False, isolatedNodes: list = None, init_infected: int = None):
     import matplotlib.pyplot as plt
     import networkx as nx
     import numpy as np
 
     print(f"Starting graph image: {i}")
     fig, ax = plt.subplots()
-
+    if init_infected:
+        G_2 = copy.deepcopy(G)
+        G_2 = nx.ego_graph(G, n=init_infected, radius=9999)
+        isolatedNew = isolatedNodes + (len(G.nodes()) - len(G_2.nodes()))
     # Define SIR colors (RGBA)
     state_to_color = {
         0: np.array([0, 1, 0, 1]),  # Susceptible
@@ -253,13 +257,17 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
 
 
     ax.axis("off")
-    fig.text(-0.05, 0.95, s=f"Step: {i+1}")
-    fig.text(-0.05, 0.9, s=f"Susceptible Nodes: {len(state_to_nodes[0])}")
-    fig.text(-0.05, 0.85, s=f"Infected Nodes: {len(state_to_nodes[1])}")
-    fig.text(-0.05, 0.8, s=f"Recovered Nodes: {len(state_to_nodes[2])}")
+    fig.text(-0.15, 0.95, s=f"Step: {i+1}")
+    fig.text(-0.15, 0.9, s=f"Total Nodes = {len(G.nodes()) + isolatedNodes}")
+    fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes()) - len(G_2.nodes()))}")
+    fig.text(-0.15, 0.8, s=f"Infected Nodes: {len(state_to_nodes[1])}")
+    fig.text(-0.15, 0.75, s=f"Recovered Nodes: {len(state_to_nodes[2])}")
     if isolatedNodes:
-        fig.text(-0.05, 0.75, s=f"Isolated Nodes: {isolatedNodes}")
-    fig.subplots_adjust(left=0.1) 
+        if not init_infected:
+            fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNodes}")
+        if init_infected:
+            fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNew}")
+    fig.subplots_adjust(left=0.2) 
     fig.tight_layout()
     fig.savefig(f"graphs/graph_{i}.png", format="PNG", bbox_inches='tight')
     print(f"Saved graph_{i}.png!")
