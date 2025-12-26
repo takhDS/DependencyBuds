@@ -5,6 +5,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import os
+import copy
 from multiprocessing import Pool, cpu_count
 
 init_susceptible_color = np.array([0.1, 1, 0.1, 1])
@@ -36,6 +37,14 @@ def sir_model(G,
     nodecolors_total = []
     edgecolors_total = []
     infotext_total = [] # Tuples of form: (susceptible, infected, recovered, quarantined)
+    singletons_total = []
+    #if none is chosen to be targeted, choose random
+    if init_infected is None:
+        init_infected = np.random.choice(list(G.nodes), 1)[0]
+    # I need to create an ego graph in order to only grab susceptible singletons within the network
+    if init_infected:
+        G_2 = copy.deepcopy(G)
+        G_2 = nx.ego_graph(G, n=init_infected, radius=9999)
     # Ensure state is initialized (starts at 0)
     if nx.get_node_attributes(G, 'state') == {}:
         nx.set_node_attributes(G, 0, 'state')
@@ -114,6 +123,18 @@ def sir_model(G,
         nodecolors_total.append(node_colors)
         edgecolors_total.append(edge_colors)
 
+
+    # Appending the initial state of the singletons to a list for visualization purposes
+    susceptible_singletons_outside = sum(x[1] for x in G.nodes.data('s_singletons')) if doSingletonReduction else 0
+    susceptible_singletons_within = sum(x[1] for x in G_2.nodes.data('s_singletons')) if doSingletonReduction else 0
+    susceptible_singletons_outside = susceptible_singletons_outside - susceptible_singletons_within
+    infected_singletons = sum(x[1] for x in G.nodes.data('i_singletons')) if doSingletonReduction else 0
+    recovered_singletons = sum(x[1] for x in G.nodes.data('r_singletons')) if doSingletonReduction else 0
+    singletons_total.append((susceptible_singletons_within, infected_singletons, recovered_singletons, susceptible_singletons_outside))
+
+
+
+
     print("Running model...")
 
     total_susceptible_singletons = sum(x[1] for x in G.nodes.data('s_singletons')) if doSingletonReduction else 0
@@ -123,8 +144,12 @@ def sir_model(G,
     # Run model
     for step in range(max_steps):
         nodes_to_draw = set(sorted(list(G.nodes())))
-        
+        # Appending the state of singletons for every single step the model uses
+        susceptible_singletons_within = sum(x[1] for x in G_2.nodes.data('s_singletons')) if doSingletonReduction else 0
         infected_singletons = sum(x[1] for x in G.nodes.data('i_singletons')) if doSingletonReduction else 0
+        recovered_singletons = sum(x[1] for x in G.nodes.data('r_singletons')) if doSingletonReduction else 0
+        susceptible_singletons_within = susceptible_singletons_within - infected_singletons - recovered_singletons
+        singletons_total.append((susceptible_singletons_within, infected_singletons, recovered_singletons, susceptible_singletons_outside))
         infected_non_singletons = len(infected_list)
         total_infected = infected_non_singletons + infected_singletons
 
@@ -235,21 +260,28 @@ def sir_model(G,
             nodelist_total.append(nodelist)
             nodecolors_total.append(node_colors)
             edgecolors_total.append(edge_colors)
-    return nodelist_total, nodecolors_total, edgecolors_total, options, infotext_total
+    if doSingletonReduction:
+        return nodelist_total, nodecolors_total, edgecolors_total, options, singletons_total
+    else:
+        return nodelist_total, nodecolors_total, edgecolors_total, options
     
-def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options, infotext_total):
+def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options, visualizeEdges: bool = False, isolatedNodes: list = None, init_infected: int = None, singletons_total: list = None):
     import matplotlib.pyplot as plt
     import networkx as nx
     import numpy as np
-
+    
     print(f"Starting graph image: {i}")
     fig, ax = plt.subplots()
-
+    if init_infected:
+        G_2 = copy.deepcopy(G)
+        G_2 = nx.ego_graph(G, n=init_infected, radius=9999)
+        isolatedNew = isolatedNodes + (len(G.nodes()) - len(G_2.nodes()))
     
     global susceptible_color
     global infected_color
     global removed_color
     global quarantined_color
+    
     # Define SIR colors (RGBA)
     state_to_color = {
         0: susceptible_color,  # Susceptible
@@ -260,7 +292,7 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
 
     # Group nodes by state
     state_to_nodes = {0: [], 1: [], 2: []}
-    state_to_edgecolors = {0: [], 1: [], 2: []}
+    state_to_edgecolors = {0: [], 1: [] , 2: []}
 
     for node, color, edge_color in zip(nodelist_total[i], nodecolors_total[i], edgecolors_total[i]):
         # Match color to state
@@ -286,6 +318,7 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
                 edgecolors=state_to_edgecolors[state],
                 **options
             )
+            
 
     plt.text(0, 1, "Susceptible: " + str(infotext_total[i][0]) + '\n' + 
                       "Infected: " + str(infotext_total[i][1]) + '\n' + 
@@ -293,8 +326,33 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
                       horizontalalignment='left', verticalalignment='center', transform=ax.transAxes)
 
     ax.axis("off")
+    fig.text(-0.15, 0.95, s=f"Step: {i+1}")
+    # Printing the numbers including the singletons if they are present
+    if singletons_total:
+        fig.text(-0.15, 0.9, s=f"Total Nodes = {len(G.nodes()) + isolatedNodes + singletons_total[i][0] + singletons_total[i][1] + singletons_total[i][2] + singletons_total[i][3]}")
+        fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes()) - len(G_2.nodes())) + singletons_total[i][0]}")
+        fig.text(-0.15, 0.8, s=f"Infected Nodes: {len(state_to_nodes[1]) + singletons_total[i][1]}")
+        fig.text(-0.15, 0.75, s=f"Recovered Nodes: {len(state_to_nodes[2]) + singletons_total[i][2]}")
+        if isolatedNodes:
+            if not init_infected:
+                fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNodes}")
+            if init_infected:
+                fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNew + singletons_total[i][3]}")
+    # Printing the numbers without the singletons if they are not present
+    else:
+        fig.text(-0.15, 0.9, s=f"Total Nodes = {len(G.nodes()) + isolatedNodes}")
+        fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes()) - len(G_2.nodes()))}")
+        fig.text(-0.15, 0.8, s=f"Infected Nodes: {len(state_to_nodes[1])}")
+        fig.text(-0.15, 0.75, s=f"Recovered Nodes: {len(state_to_nodes[2])}")
+        if isolatedNodes:
+            if not init_infected:
+                fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNodes}")
+            if init_infected:
+                fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNew}")
+    print(singletons_total[i])
+    fig.subplots_adjust(left=0.2) 
     fig.tight_layout()
-    fig.savefig(f"graphs/graph_{i}.png", format="PNG")
+    fig.savefig(f"graphs/graph_{i}.png", format="PNG", bbox_inches='tight')
     print(f"Saved graph_{i}.png!")
     plt.close(fig)
 

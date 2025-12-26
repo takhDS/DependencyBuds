@@ -2,13 +2,14 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import matplotlib
+from tqdm import tqdm
 # Force non-interactive backend to prevent GUI crashes during threading
 matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
 import os
 from concurrent.futures import ThreadPoolExecutor
-
-def singleton_reduction(edges_array, doSingletonReduction: bool = True, doVisualization: bool = True):
+import json
+def singleton_reduction(edges_array, nodes_array, doSingletonReduction: bool = True, doVisualization: bool = True):
     """Prepares graph and reduces graph nodes with in_degree 1 and out_degree 0 into singletons. 
     
     Parameters
@@ -29,7 +30,11 @@ def singleton_reduction(edges_array, doSingletonReduction: bool = True, doVisual
     # Create the digraph
     G = nx.DiGraph()
     G.add_edges_from(edges_array)
+    G.add_nodes_from(nodes_array)
 
+    isolatedNum = list(nx.isolates(G))
+    G.remove_nodes_from(isolatedNum)
+    isolatedNum = len(isolatedNum)
     """    
     Singletons are nodes that have in-degree of 1 and out-degree of 0. 
     This means, in an SIR model, a singleton doesn't infect, but is only infected, then after can recover.
@@ -60,10 +65,11 @@ def singleton_reduction(edges_array, doSingletonReduction: bool = True, doVisual
 
     if doVisualization:
         print("Calculating node layout and positions...")
-        pos = nx.spring_layout(G, seed=8020, gravity=0.75)
+        pos = None
+        pos = nx.spring_layout(G, pos=pos, gravity=0.85)
         print("Done!")
     
     if doVisualization:
-        return G, pos
+        return G, pos, isolatedNum
     else:
-        return G
+        return G, isolatedNum
