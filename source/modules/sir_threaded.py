@@ -175,26 +175,24 @@ def sir_model(G,
     # > Constant
     # Total Nodes
     if network_type == "ego":
-        constants_total['tn'] = len(G) + sum([x[1] for x in G.nodes.data('s_singletons')]) + sum([x[1] for x in G.nodes.data('i_singletons')])
+        constants_total['tn'] = len(G) + sum([x[1] for x in G.nodes.data('s_singletons')])
     elif network_type == "full":
-        constants_total['tn'] = len(G_full) + sum([x[1] for x in G_full.nodes.data('s_singletons')]) + sum([x[1] for x in G_full.nodes.data('i_singletons')])
+        constants_total['tn'] = len(G_full) + sum([x[1] for x in G_full.nodes.data('s_singletons')])
     constants_total['xt'] = constants_total['tn'] - len(accessible_sus_nodes)
 
     # > Variable
     infotext = {}
 
-    # infotext['ssw'] = sum(G_full[i]['s_singletons'] for i in get_accessible_sus_nodes(G_full, init_infected))
     infotext['ssw'] = sum(i[1] for i in G_full.nodes.data('s_singletons') if i[0] in accessible_sus_nodes)
-    constants_total['tn'] -= infotext['ssw']
+    constants_total['xt'] -= infotext['ssw']
     infotext['sso'] = sum([x[1] for x in G_full.nodes.data('s_singletons')]) - infotext['ssw']
-    # if network_type == "full":
 
     infotext['it'] = len(init_infected)
     infotext['st'] = len(accessible_sus_nodes) - len(init_infected) + infotext['ssw']
     infotext['rt'] = 0
     infotext['qt'] = 0
     if doSingletonReduction:
-        infotext['ss'] = infotext['ssw'] + infotext['sso'] + infotext['ssw']
+        infotext['ss'] = infotext['ssw'] + infotext['sso']
         infotext['is'] = 0
         infotext['rs'] = 0
     infotext_total.append(dict(infotext))
@@ -335,8 +333,6 @@ def sir_model(G,
             nodelist_total.append(nodelist)
             nodecolors_total.append(node_colors)
             edgecolors_total.append(edge_colors)
-
-            infotext['it'] = len(infected_list)
 
             infotext_total.append(dict(infotext))
 
