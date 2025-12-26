@@ -29,7 +29,7 @@ def sir_model(G,
               infection_rate: float = 0.2, 
               recovery_rate: float = 0.05, 
               noticeability_rates: tuple = None, 
-              quarantine_length: int = None,
+              quarantine_length: int = 5,
               network_type: str = "full", 
               doVisualization: bool = True, 
               doSingletonReduction: bool = True,
@@ -60,7 +60,7 @@ def sir_model(G,
         The first value represents the noticeability rate before the virus is found. The second value represents the rate after.
         Quarantining is not performed if set to None.
     quarantine_length: int
-        For how long
+        For how many steps does the quarantine last. Set to None for infinite quarantines.
     network_type: str
         Takes on the values "full" or "ego". "full" means all nodes of the network have been used. "ego" refers to the fact an ego network was used.
     doVisualization: bool
@@ -147,7 +147,7 @@ def sir_model(G,
                 has_infected_singletons.add(i)
 
     # Keep track of origin nodes of quarantine - levels of contact tracing 'spread' from them
-    quarantined_origin_list = set() # Nodes that are within quarantine don't get infected and don't spread, singletons don't get quarantined
+    quarantined_origin_list = dict() # Nodes that are within quarantine don't get infected and don't spread, singletons don't get quarantined
     virusFound = noticeability_rates == None # If no quarantining, then virus instantly noticed by authority
 
     if doVisualization: # Saves the colors of the nodes
@@ -218,19 +218,29 @@ def sir_model(G,
 
         # Update quarantined list
         quarantined_list = set()
-        for origin in quarantined_origin_list:
+        for origin in quarantined_origin_list.keys():
             quarantined_list.add(origin)
             adj = G.neighbors(origin)
             for neighbor in adj:
                 quarantined_list.add(neighbor)
+
         infotext['qt'] = len(quarantined_list)
+        for x in list(quarantined_origin_list.items()):
+            # Tick time on quarantines
+            if not quarantine_length == None:
+                quarantined_origin_list[x[0]] = quarantined_origin_list[x[0]] - 1
+                if x[1] <= 0:
+                    del quarantined_origin_list[x[0]]
+
 
         noticeability_rate = noticeability_rates[1] if virusFound else noticeability_rates[0]
 
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        print("[DEBUG] SS: ", infotext['ss'])
-        print("[DEBUG] SSW: ", infotext['ssw'])
-        print("[DEBUG] ST: ", infotext['st'])
+        print("Step: ", step+1)
+        # print("[DEBUG] SS: ", infotext['ss'])
+        # print("[DEBUG] SSW: ", infotext['ssw'])
+        # print("[DEBUG] ST: ", infotext['st'])
+        print("[DEBUG] QT: ", infotext['qt'])
         # print(f"Step: {step}")
         # print(f"Infected left: {infotext['it']}")
         # if doSingletonReduction:
@@ -238,7 +248,7 @@ def sir_model(G,
         #     print(f"> Singletons infected: {infotext['is']}")
 
         # Early Stopping
-        if infotext['it']-infotext['is'] == 0 and infotext['is'] == 0:
+        if infotext['it']-infotext['is'] == 0 and infotext['is'] == 0 and infotext['qt'] == 0:
             break
 
         # >>> Infection, recovery and noticeability
@@ -271,7 +281,7 @@ def sir_model(G,
         for i in temp_inf_list:
             # Quarantine current infected node
             if np.random.sample() < noticeability_rate and not i in quarantined_list:
-                quarantined_origin_list.add(i)
+                quarantined_origin_list[i] = quarantine_length
                 quarantined_list.add(i)
                 virusFound = True
 
@@ -340,7 +350,7 @@ def sir_model(G,
         return nodelist_total, nodecolors_total, edgecolors_total, options, infotext_total, constants_total
     return nodelist_total, nodecolors_total, edgecolors_total, options
 
-def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options, infotext_total: list = None, constants_total: dict = None):
+def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options, infotext_total: list = None, constants_total: dict = None, doDrawEdges: bool = False):
     import matplotlib.pyplot as plt
     import networkx as nx
     import numpy as np
@@ -376,6 +386,9 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
             raise ValueError(f"Unknown node color: {color}")
         state_to_nodes[matched_state].append(node)
         state_to_edgecolors[matched_state].append(edge_color)
+
+    if doDrawEdges:
+        nx.draw_networkx_edges(G, pos, width=0.2, alpha=0.25)
 
     # Draw nodes in order: Susceptible → Removed → Infected (infected on top)
     layering_order = [0, 1, 2]
