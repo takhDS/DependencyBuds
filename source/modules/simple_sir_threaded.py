@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import os
 from multiprocessing import Pool, cpu_count
 
-def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection_rate: float = 0.2, recovery_rate: float = 0.05, doVisualization: bool = True, doSingletonReduction: bool = True, doVisualizeSingletonReduction: bool = True, egoNetwork: bool = False):
+def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection_rate: float = 0.2, recovery_rate: float = 0.05, doVisualization: bool = True, doSingletonReduction: bool = True, doVisualizeSingletonReduction: bool = True):
     """Creates SIR model and visualizes it if enabled
     
     """
