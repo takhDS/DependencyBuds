@@ -272,6 +272,7 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
     
     print(f"Starting graph image: {i}")
     fig, ax = plt.subplots()
+    
     if init_infected:
         G_2 = copy.deepcopy(G)
         G_2 = nx.ego_graph(G, n=init_infected, radius=9999)
@@ -281,7 +282,7 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
     global infected_color
     global removed_color
     global quarantined_color
-    
+
     # Define SIR colors (RGBA)
     state_to_color = {
         0: susceptible_color,  # Susceptible
