@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import os
 from multiprocessing import Pool, cpu_count
 
-def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection_rate: float = 0.2, recovery_rate: float = 0.05, doVisualization: bool = True, doSingletonReduction: bool = True, doVisualizeSingletonReduction: bool = True):
+def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection_rate: float = 0.2, recovery_rate: float = 0.05, doVisualization: bool = True, doSingletonReduction: bool = True, doVisualizeSingletonReduction: bool = True, egoNetwork: bool = False):
     """Creates SIR model and visualizes it if enabled
     
     """
@@ -15,13 +15,15 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
     nodelist_total = []
     nodecolors_total = []
     edgecolors_total = []
-    # Ensure state is initialized (starts at 0)
-    if nx.get_node_attributes(G, 'state') == {}:
-        nx.set_node_attributes(G, 0, 'state')
 
     #if none is chosen to be targeted, choose random
     if init_infected is None:
         init_infected = np.random.choice(list(G.nodes), 1)[0]
+    
+    # Ensure state is initialized (starts at 0)
+    if nx.get_node_attributes(G, 'state') == {}:
+        nx.set_node_attributes(G, 0, 'state')
+
     
     #infects the random one
     G.nodes[init_infected]['state'] = 1
@@ -197,7 +199,7 @@ def sir_model(G, pos, init_infected: int = None, max_steps: int = 100, infection
             edgecolors_total.append(edge_colors)
     return nodelist_total, nodecolors_total, edgecolors_total, options     
     
-def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options):
+def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options, visualizeEdges: bool = False, isolatedNodes: list = None):
     import matplotlib.pyplot as plt
     import networkx as nx
     import numpy as np
@@ -240,11 +242,26 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options)
                 edgecolors=state_to_edgecolors[state],
                 **options
             )
+        if visualizeEdges:
+            nx.draw_networkx_edges(
+                G, pos,
+                alpha=0.18,
+                width=0.7,
+                edge_color="gray",
+                connectionstyle="arc3,rad=0.1"
+            )
 
 
     ax.axis("off")
+    fig.text(-0.05, 0.95, s=f"Step: {i+1}")
+    fig.text(-0.05, 0.9, s=f"Susceptible Nodes: {len(state_to_nodes[0])}")
+    fig.text(-0.05, 0.85, s=f"Infected Nodes: {len(state_to_nodes[1])}")
+    fig.text(-0.05, 0.8, s=f"Recovered Nodes: {len(state_to_nodes[2])}")
+    if isolatedNodes:
+        fig.text(-0.05, 0.75, s=f"Isolated Nodes: {isolatedNodes}")
+    fig.subplots_adjust(left=0.1) 
     fig.tight_layout()
-    fig.savefig(f"graphs/graph_{i}.png", format="PNG")
+    fig.savefig(f"graphs/graph_{i}.png", format="PNG", bbox_inches='tight')
     print(f"Saved graph_{i}.png!")
     plt.close(fig)
 
