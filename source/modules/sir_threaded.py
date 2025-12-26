@@ -185,6 +185,7 @@ def sir_model(G,
 
     # infotext['ssw'] = sum(G_full[i]['s_singletons'] for i in get_accessible_sus_nodes(G_full, init_infected))
     infotext['ssw'] = sum(i[1] for i in G_full.nodes.data('s_singletons') if i[0] in accessible_sus_nodes)
+    constants_total['tn'] -= infotext['ssw']
     infotext['sso'] = sum([x[1] for x in G_full.nodes.data('s_singletons')]) - infotext['ssw']
     # if network_type == "full":
 
