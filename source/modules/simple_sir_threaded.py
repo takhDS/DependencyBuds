@@ -172,8 +172,8 @@ def sir_model(G,
         print(f"> Singletons infected: {infected_singletons}")
         
         # Save info about network as output
-        if doRenderInfoText:
-            infotext_total.append((total_susceptible, total_infected, total_recovered, 0)) 
+        # if doRenderInfoText:
+        #     infotext_total.append((total_susceptible, total_infected, total_recovered, 0)) 
 
         # Early Stopping
         if infected_non_singletons == 0 and infected_singletons == 0:
@@ -273,7 +273,7 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
     print(f"Starting graph image: {i}")
     fig, ax = plt.subplots()
     
-    if init_infected:
+    if init_infected and isolatedNodes:
         G_2 = copy.deepcopy(G)
         G_2 = nx.ego_graph(G, n=init_infected, radius=9999)
         isolatedNew = isolatedNodes + (len(G.nodes()) - len(G_2.nodes()))
@@ -321,16 +321,19 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
             )
             
 
-    plt.text(0, 1, "Susceptible: " + str(infotext_total[i][0]) + '\n' + 
-                      "Infected: " + str(infotext_total[i][1]) + '\n' + 
-                      "Recovered: " + str(infotext_total[i][2]) + '\n', 
-                      horizontalalignment='left', verticalalignment='center', transform=ax.transAxes)
+    # plt.text(0, 1, "Susceptible: " + str(infotext_total[i][0]) + '\n' + 
+    #                   "Infected: " + str(infotext_total[i][1]) + '\n' + 
+    #                   "Recovered: " + str(infotext_total[i][2]) + '\n', 
+    #                   horizontalalignment='left', verticalalignment='center', transform=ax.transAxes)
 
     ax.axis("off")
     fig.text(-0.15, 0.95, s=f"Step: {i+1}")
     # Printing the numbers including the singletons if they are present
+    if isolatedNodes == None:
+            temp_isolatedNodes = 0
     if singletons_total:
-        fig.text(-0.15, 0.9, s=f"Total Nodes = {len(G.nodes()) + isolatedNodes + singletons_total[i][0] + singletons_total[i][1] + singletons_total[i][2] + singletons_total[i][3]}")
+        fig.text(-0.15, 0.9, s=f"Total Nodes = {len(G.nodes()) + temp_isolatedNodes + singletons_total[i][0] + singletons_total[i][1] + singletons_total[i][2] + singletons_total[i][3]}")
+        fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes())) + singletons_total[i][0]}")
         fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes()) - len(G_2.nodes())) + singletons_total[i][0]}")
         fig.text(-0.15, 0.8, s=f"Infected Nodes: {len(state_to_nodes[1]) + singletons_total[i][1]}")
         fig.text(-0.15, 0.75, s=f"Recovered Nodes: {len(state_to_nodes[2]) + singletons_total[i][2]}")
@@ -339,10 +342,13 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
                 fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNodes}")
             if init_infected:
                 fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNew + singletons_total[i][3]}")
+        
+        print(singletons_total[i])
     # Printing the numbers without the singletons if they are not present
     else:
-        fig.text(-0.15, 0.9, s=f"Total Nodes = {len(G.nodes()) + isolatedNodes}")
-        fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes()) - len(G_2.nodes()))}")
+        fig.text(-0.15, 0.9, s=f"Total Nodes = {len(G.nodes()) + temp_isolatedNodes}")
+        # fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes()) - len(G_2.nodes()))}")
+        fig.text(-0.15, 0.85, s=f"Susceptible Nodes: {len(state_to_nodes[0]) - (len(G.nodes()))}")
         fig.text(-0.15, 0.8, s=f"Infected Nodes: {len(state_to_nodes[1])}")
         fig.text(-0.15, 0.75, s=f"Recovered Nodes: {len(state_to_nodes[2])}")
         if isolatedNodes:
@@ -350,7 +356,6 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
                 fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNodes}")
             if init_infected:
                 fig.text(-0.15, 0.7, s=f"Isolated Nodes: {isolatedNew}")
-    print(singletons_total[i])
     fig.subplots_adjust(left=0.2) 
     fig.tight_layout()
     fig.savefig(f"graphs/graph_{i}.png", format="PNG", bbox_inches='tight')
