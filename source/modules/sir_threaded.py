@@ -60,7 +60,7 @@ def sir_model(G,
         The first value represents the noticeability rate before the virus is found. The second value represents the rate after.
         Quarantining is not performed if set to None.
     quarantine_length: int
-        For how many steps does the quarantine last. Set to None for infinite quarantines.
+        For how many steps does the quarantine last. Set to None for infinite quarantines. Set to 0 to disable quarantining.
     network_type: str
         Takes on the values "full" or "ego". "full" means all nodes of the network have been used. "ego" refers to the fact an ego network was used.
     doVisualization: bool
@@ -218,13 +218,13 @@ def sir_model(G,
 
         # Update quarantined list
         quarantined_list = set()
-        for origin in quarantined_origin_list.keys():
-            quarantined_list.add(origin)
-            adj = G.neighbors(origin)
-            for neighbor in adj:
-                quarantined_list.add(neighbor)
+        if not quarantine_length == 0:
+            for origin in quarantined_origin_list.keys():
+                quarantined_list.add(origin)
+                adj = G.neighbors(origin)
+                for neighbor in adj:
+                    quarantined_list.add(neighbor)
 
-        infotext['qt'] = len(quarantined_list)
         for x in list(quarantined_origin_list.items()):
             # Tick time on quarantines
             if not quarantine_length == None:
@@ -232,6 +232,7 @@ def sir_model(G,
                 if x[1] <= 0:
                     del quarantined_origin_list[x[0]]
 
+        infotext['qt'] = len(quarantined_list)
 
         noticeability_rate = noticeability_rates[1] if virusFound else noticeability_rates[0]
 
@@ -280,7 +281,7 @@ def sir_model(G,
         temp_inf_list = list(infected_list)
         for i in temp_inf_list:
             # Quarantine current infected node
-            if np.random.sample() < noticeability_rate and not i in quarantined_list:
+            if np.random.sample() < noticeability_rate and not i in quarantined_list and not quarantine_length == 0:
                 quarantined_origin_list[i] = quarantine_length
                 quarantined_list.add(i)
                 virusFound = True
