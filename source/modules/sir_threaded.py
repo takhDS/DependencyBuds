@@ -26,7 +26,8 @@ def sir_model(G,
               G_full,
               init_infected: list = None, 
               max_steps: int = 100, 
-              infection_rate: float = 0.2, 
+              #infection_rate: float = 0.2, 
+              infection_rate = 0.2,
               recovery_rate: float = 0.05, 
               noticeability_rates: tuple = None, 
               quarantine_length: int = None,
@@ -170,6 +171,8 @@ def sir_model(G,
 
 
     # >>> Save initial state information
+    average_out_degree = sum(dict(G.out_degree).values())/G.number_of_nodes() #average degree of the graph
+    infection_islist = type(infection_rate) is list
     susceptible_total = len(G) - len(init_infected)
     accessible_sus_nodes = get_accessible_sus_nodes(G_full, init_infected)
     # > Constant
@@ -280,7 +283,17 @@ def sir_model(G,
             if not isQuarantined:
                 adj = G.neighbors(i)
                 for j in adj:
-                    if G.nodes[j].get('state', 0) == 0 and np.random.sample() < infection_rate:
+                    
+                    #Decide infection rate for node j
+                    if not infection_islist:
+                        new_infection_rate = infection_rate
+                    elif G.out_degree(j) > average_out_degree and infection_islist:
+                        new_infection_rate = infection_rate[0]
+                    elif G.out_degree(j) <= average_out_degree and infection_islist:
+                        new_infection_rate = infection_rate[1]
+                    
+
+                    if G.nodes[j].get('state', 0) == 0 and np.random.sample() < new_infection_rate:
                         infected_list.add(j)
                         G.nodes[j]['state'] = 1
 
@@ -292,7 +305,7 @@ def sir_model(G,
 
             # Infect singletons
             if doSingletonReduction and not isQuarantined:
-                temp = np.random.binomial(n=G.nodes[i]['s_singletons'], p=infection_rate)
+                temp = np.random.binomial(n=G.nodes[i]['s_singletons'], p=new_infection_rate)
                 if temp > 0:
                     has_infected_singletons.add(i)
                     G.nodes[i]['s_singletons'] -= temp
