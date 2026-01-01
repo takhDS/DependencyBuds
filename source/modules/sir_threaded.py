@@ -31,6 +31,7 @@ def sir_model(G,
               recovery_rate: float = 0.05, 
               noticeability_rates: tuple = None, 
               quarantine_length: int = 5,
+              contact_tracing: int = 1,
               network_type: str = "full", 
               doVisualization: bool = True, 
               doSingletonReduction: bool = True,
@@ -62,6 +63,8 @@ def sir_model(G,
         Quarantining is not performed if set to None.
     quarantine_length: int
         For how many steps does the quarantine last. Set to None for infinite quarantines. Set to 0 to disable quarantining.
+    contract_tracing: int
+        How many recursive levels does quarantine 'spread' from a quaratined origin node. Set to 0 to only quarantine origin node
     network_type: str
         Takes on the values "full" or "ego". "full" means all nodes of the network have been used. "ego" refers to the fact an ego network was used.
     doVisualization: bool
@@ -214,6 +217,14 @@ def sir_model(G,
     'xt': isolated_total,
     """
 
+    def recursive_quarantine(nodes, level):
+        for node in nodes:
+            adj = set(G.neighbors(node))
+            for neighbor in adj:
+                quarantined_list.add(neighbor)
+            if level+1 <= contact_tracing:
+                recursive_quarantine(adj, level+1)
+
     # Run model
     print("Running model...")
     for step in range(max_steps):
@@ -224,12 +235,11 @@ def sir_model(G,
         if not quarantine_length == 0:
             for origin in quarantined_origin_list.keys():
                 quarantined_list.add(origin)
-                adj = G.neighbors(origin)
-                for neighbor in adj:
-                    quarantined_list.add(neighbor)
+                if contact_tracing > 0:
+                    recursive_quarantine([origin], 1)
 
+        # Tick time on quarantines
         for x in list(quarantined_origin_list.items()):
-            # Tick time on quarantines
             if not quarantine_length == None:
                 quarantined_origin_list[x[0]] = quarantined_origin_list[x[0]] - 1
                 if x[1] <= 0:
