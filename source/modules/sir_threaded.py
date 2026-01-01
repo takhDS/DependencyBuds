@@ -2,7 +2,6 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import os
 import copy
@@ -82,7 +81,6 @@ def sir_model(G,
     wip
     """
     if not doVisualization:
-        doRenderInfoText = False
         doVisualizeSingletonReduction = False
         doVisualizeIsolates = False
 
@@ -92,6 +90,7 @@ def sir_model(G,
     edgecolors_total = []
     infotext_total = [] # A list of dictionaries, describing the state of the step in the simulation
     constants_total = {}
+    constants_total['virusFoundStep'] = 9999999
     
     # If none is chosen to be targeted, choose one random node
     if init_infected is None or len(init_infected) == 0:
@@ -176,6 +175,7 @@ def sir_model(G,
     # >>> Save initial state information
     average_out_degree = sum(dict(G.out_degree).values())/G.number_of_nodes() #average degree of the graph
     infection_islist = type(infection_rate) is list
+    print(f"[DEBUG2] {infection_islist}")
     susceptible_total = len(G) - len(init_infected)
     accessible_sus_nodes = get_accessible_sus_nodes(G_full, init_infected)
     # > Constant
@@ -301,6 +301,7 @@ def sir_model(G,
                 quarantined_origin_list[i] = quarantine_length
                 quarantined_list.add(i)
                 virusFound = True
+                constants_total['virusFoundStep'] = min(step, constants_total['virusFoundStep'])
 
             # Infect adjacent nodes
             isQuarantined = i in quarantined_list
@@ -329,6 +330,14 @@ def sir_model(G,
 
             # Infect singletons
             if doSingletonReduction and not isQuarantined:
+                #Decide infection rate for node i
+                if not infection_islist:
+                    new_infection_rate = infection_rate
+                elif G.out_degree(i) > average_out_degree and infection_islist:
+                    new_infection_rate = infection_rate[0]
+                elif G.out_degree(i) <= average_out_degree and infection_islist:
+                    new_infection_rate = infection_rate[1]
+
                 temp = np.random.binomial(n=G.nodes[i]['s_singletons'], p=new_infection_rate)
                 if temp > 0:
                     has_infected_singletons.add(i)
@@ -371,7 +380,7 @@ def sir_model(G,
             nodecolors_total.append(node_colors)
             edgecolors_total.append(edge_colors)
 
-            infotext_total.append(dict(infotext))
+        infotext_total.append(dict(infotext))
 
     if doRenderInfoText:
         return nodelist_total, nodecolors_total, edgecolors_total, options, infotext_total, constants_total
@@ -379,6 +388,7 @@ def sir_model(G,
 
 def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options, infotext_total: list = None, constants_total: dict = None, doDrawEdges: bool = False):
     import matplotlib.pyplot as plt
+    matplotlib.use("Agg")
     import networkx as nx
     import numpy as np
     
