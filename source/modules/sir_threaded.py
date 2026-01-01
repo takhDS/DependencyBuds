@@ -237,7 +237,8 @@ def sir_model(G,
 
         infotext['qt'] = len(quarantined_list)
 
-        noticeability_rate = noticeability_rates[1] if virusFound else noticeability_rates[0]
+        if not noticeability_rate is None:
+            noticeability_rate = noticeability_rates[1] if virusFound else noticeability_rates[0]
 
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         print("Step: ", step+1)
