@@ -32,6 +32,7 @@ def sir_model(G,
               quarantine_length: int = 5,
               contact_tracing: int = 1,
               network_type: str = "full", 
+              loss_matrix = ((10, 0),(2, 1)),
               doVisualization: bool = True, 
               doSingletonReduction: bool = True,
               doVisualizeIsolates: bool = False,
@@ -66,6 +67,9 @@ def sir_model(G,
         How many recursive levels does quarantine 'spread' from a quaratined origin node. Set to 0 to only quarantine origin node
     network_type: str
         Takes on the values "full" or "ego". "full" means all nodes of the network have been used. "ego" refers to the fact an ego network was used.
+    loss_matrix: tuple of tuples
+        The first tuple refers to the "creation" loss, that is to say, when a node is infected (first position) or quarantined (second position) for the first time, how much loss is incurred?
+        The second tuple refers to "ticking" loss, that is to say, for ever step, how much loss is incurred by the very existence of that type of node for that step?
     doVisualization: bool
         Whether or not visualization should be done.
     doSingletonReduction: bool
@@ -197,6 +201,7 @@ def sir_model(G,
     infotext['st'] = len(accessible_sus_nodes) - len(init_infected) + infotext['ssw']
     infotext['rt'] = 0
     infotext['qt'] = 0
+    infotext['loss'] = 0
     if doSingletonReduction:
         infotext['ss'] = infotext['ssw'] + infotext['sso']
         infotext['is'] = 0
@@ -220,10 +225,9 @@ def sir_model(G,
     def recursive_quarantine(nodes, level):
         for node in nodes:
             adj = set(G.neighbors(node))
-            for neighbor in adj:
-                quarantined_list.add(neighbor)
             if level+1 <= contact_tracing:
-                recursive_quarantine(adj, level+1)
+                adj.update(recursive_quarantine(adj, level+1))
+            return adj
 
     # Run model
     print("Running model...")
@@ -236,7 +240,8 @@ def sir_model(G,
             for origin in quarantined_origin_list.keys():
                 quarantined_list.add(origin)
                 if contact_tracing > 0:
-                    recursive_quarantine([origin], 1)
+                    for i in recursive_quarantine([origin], 1):
+                        quarantined_list.add(i)
 
         # Tick time on quarantines
         for x in list(quarantined_origin_list.items()):
@@ -303,6 +308,15 @@ def sir_model(G,
                 virusFound = True
                 constants_total['virusFoundStep'] = min(step, constants_total['virusFoundStep'])
 
+                # Add quarantine-creation loss
+                qc_loss = set()
+                qc_loss.add(i)
+                if contact_tracing > 0:
+                    for quar in recursive_quarantine([i],1):
+                        qc_loss.add(quar)
+                infotext['loss'] += len(qc_loss) * loss_matrix[0][1]
+                print(f"[DEBUG] Added {len(qc_loss) * loss_matrix[0][1]} loss due to: Quarantine creation")
+
             # Infect adjacent nodes
             isQuarantined = i in quarantined_list
             if not isQuarantined:
@@ -324,6 +338,8 @@ def sir_model(G,
 
                         infotext['st'] -= 1
                         infotext['it'] += 1
+                        infotext['loss'] += loss_matrix[0][0]
+                        print(f"[DEBUG] Added {loss_matrix[0][0]} loss due to: Infection creation")
                         
                         if doVisualization:
                             nodes_to_draw.add(j)
@@ -349,6 +365,8 @@ def sir_model(G,
                     infotext['ss'] -= temp
                     infotext['ssw'] -= temp
                     infotext['is'] += temp
+                    infotext['loss'] += temp * loss_matrix[0][0]
+                    print(f"[DEBUG] Added {temp*loss_matrix[0][0]} loss due to: Infection creation (singletons)")
                     
                     if doVisualization:
                         nodes_to_draw.add(i)
@@ -363,6 +381,12 @@ def sir_model(G,
                 
                 if doVisualization:
                     nodes_to_draw.add(i)
+
+        # Ticking loss
+        infotext['loss'] += len(quarantined_list) * loss_matrix[1][1]
+        print(f"[DEBUG] Added {temp*loss_matrix[1][1]} loss due to: Quarantine ticking")
+        infotext['loss'] += infotext['it'] * loss_matrix[1][0]
+        print(f"[DEBUG] Added {temp*loss_matrix[1][0]} loss due to: Infected ticking")
 
         # Draw all changes for this step in one go
         if doVisualization and nodes_to_draw:
@@ -456,6 +480,7 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
         text_to_render += f"\nSusceptible Singletons: {info['ssw']}" # or ['ss']
         text_to_render += f"\nInfected Singletons: {info['is']}"
         text_to_render += f"\nRecovered Singletons: {info['rs']}"
+        text_to_render += f"\nLoss: {info['loss']}"
     plt.text(-0.25, 0.95, s=text_to_render, horizontalalignment='left', verticalalignment='center', transform=ax.transAxes)
 
     fig.subplots_adjust(left=0.2) 
