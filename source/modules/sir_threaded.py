@@ -68,7 +68,7 @@ def sir_model(G,
         How many recursive levels does quarantine 'spread' from a quaratined origin node. Set to 0 to only quarantine origin node
     network_type: str
         Takes on the values "full" or "ego". "full" means all nodes of the network have been used. "ego" refers to the fact an ego network was used.
-    loss_matrix: tuple of tuples
+    loss_matrix: tuple of 2 tuples
         The first tuple refers to the "creation" loss, that is to say, when a node is infected (first position) or quarantined (second position) for the first time, how much loss is incurred?
         The second tuple refers to "ticking" loss, that is to say, for ever step, how much loss is incurred by the very existence of that type of node for that step?
     doVisualization: bool
@@ -80,6 +80,8 @@ def sir_model(G,
         Whether or not to visualize singletons as their average color around their parent node. Otherwise, they aren't visualized at all.
     doRenderInfoText: bool
         Whether or not render simulation information as text in the output for visualization.
+    disablePrintOuput: bool
+        Self-explanatory
 
     Returns
     -------
@@ -509,3 +511,37 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
     fig.savefig(f"graphs/graph_{i}.png", format="PNG", bbox_inches='tight')
     print(f"Saved graph_{i}.png!")
     plt.close(fig)
+
+def simulate_threaded(i,
+                      G, 
+                      G_full_sr, 
+                      init_infected, 
+                      infection_rate, 
+                      recovery_rate, 
+                      max_steps, 
+                      noticeability_rates, 
+                      quarantine_length,
+                      contact_tracing,
+                      loss_matrix,
+                     ):
+    G_temp = copy.deepcopy(G)
+
+    G_temp = G_temp.subgraph(get_accessible_sus_nodes(G_temp, init_infected)).copy()
+
+    temp_packed = sir_model(G_temp, G_full_sr, 
+                                init_infected=init_infected, 
+                                infection_rate=infection_rate, 
+                                recovery_rate=recovery_rate, 
+                                max_steps=max_steps, 
+                                doSingletonReduction=True, 
+                                noticeability_rates=noticeability_rates, 
+                                quarantine_length=quarantine_length,
+                                contact_tracing=contact_tracing,
+                                loss_matrix=loss_matrix,
+                                network_type='full',
+                                disablePrintOutput=True
+                                )
+    _, _, _, _, infotext_total, constants_total = temp_packed
+
+    print("Run: ", i, " --- Steps taken: ", len(infotext_total), " --- Loss: ", infotext_total[-1]['loss'])
+    return infotext_total[-1]['loss']
