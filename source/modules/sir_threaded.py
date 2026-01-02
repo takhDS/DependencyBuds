@@ -38,6 +38,7 @@ def sir_model(G,
               doVisualizeIsolates: bool = False,
               doVisualizeSingletonReduction: bool = True,
               doRenderInfoText: bool = True,
+              disablePrintOutput: bool = False,
               ):
     """
     Simulates SIR model and returns visualization information and singleton reduction if needed.
@@ -179,7 +180,8 @@ def sir_model(G,
     # >>> Save initial state information
     average_out_degree = sum(dict(G.out_degree).values())/G.number_of_nodes() #average degree of the graph
     infection_islist = type(infection_rate) is list
-    print(f"[DEBUG2] {infection_islist}")
+    if not disablePrintOutput:
+        print(f"[DEBUG2] {infection_islist}")
     susceptible_total = len(G) - len(init_infected)
     accessible_sus_nodes = get_accessible_sus_nodes(G_full, init_infected)
     # > Constant
@@ -223,6 +225,8 @@ def sir_model(G,
     """
 
     def recursive_quarantine(nodes, level):
+        if type(nodes) is set or nodes is None:
+            return set()
         for node in nodes:
             adj = set(G.neighbors(node))
             if level+1 <= contact_tracing:
@@ -230,7 +234,9 @@ def sir_model(G,
             return adj
 
     # Run model
-    print("Running model...")
+    if not disablePrintOutput:
+        print("Running model...")
+
     for step in range(max_steps):
         nodes_to_draw = set(sorted(list(G.nodes())))
 
@@ -240,7 +246,8 @@ def sir_model(G,
             for origin in quarantined_origin_list.keys():
                 quarantined_list.add(origin)
                 if contact_tracing > 0:
-                    for i in recursive_quarantine([origin], 1):
+                    temp_qlist = recursive_quarantine([origin], 1)
+                    for i in temp_qlist:
                         quarantined_list.add(i)
 
         # Tick time on quarantines
@@ -257,17 +264,18 @@ def sir_model(G,
         else:
             noticeability_rate = 0
 
-        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        print("Step: ", step+1)
-        # print("[DEBUG] SS: ", infotext['ss'])
-        # print("[DEBUG] SSW: ", infotext['ssw'])
-        # print("[DEBUG] ST: ", infotext['st'])
-        print("[DEBUG] QT: ", infotext['qt'])
-        # print(f"Step: {step}")
-        # print(f"Infected left: {infotext['it']}")
-        # if doSingletonReduction:
-        #     print(f"> Non-singletons infected: {infotext['it']-infotext['is']}")
-        #     print(f"> Singletons infected: {infotext['is']}")
+        if not disablePrintOutput:
+            print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+            print("Step: ", step+1)
+            # print("[DEBUG] SS: ", infotext['ss'])
+            # print("[DEBUG] SSW: ", infotext['ssw'])
+            # print("[DEBUG] ST: ", infotext['st'])
+            print("[DEBUG] QT: ", infotext['qt'])
+            # print(f"Step: {step}")
+            # print(f"Infected left: {infotext['it']}")
+            # if doSingletonReduction:
+            #     print(f"> Non-singletons infected: {infotext['it']-infotext['is']}")
+            #     print(f"> Singletons infected: {infotext['is']}")
 
         # Early Stopping
         if infotext['it']-infotext['is'] == 0 and infotext['is'] == 0 and infotext['qt'] == 0:
@@ -275,7 +283,9 @@ def sir_model(G,
 
         # >>> Infection, recovery and noticeability
         if doSingletonReduction and virusFound:
-            print("[INFO] Recovering singletons...")
+            if not disablePrintOutput:
+                print("[INFO] Recovering singletons...")
+        
             temp_infsng_list = list(has_infected_singletons) # Temporary infected singleton list
             for i in temp_infsng_list:
                 inf_sng = G.nodes[i]['i_singletons']
@@ -294,28 +304,33 @@ def sir_model(G,
                 else:
                     has_infected_singletons.remove(i)
 
-        if doSingletonReduction:
-            print("[INFO] Infecting singletons and neighbors + Recovering infected nodes...")
-        else:
-            print("[INFO] Infecting neighbors + Recovering infected nodes...")
+        if not disablePrintOutput:
+            if doSingletonReduction:
+                print("[INFO] Infecting singletons and neighbors + Recovering infected nodes...")
+            else:
+                print("[INFO] Infecting neighbors + Recovering infected nodes...")
             
         temp_inf_list = list(infected_list)
         for i in temp_inf_list:
             # Quarantine current infected node
-            if np.random.sample() < noticeability_rate and not i in quarantined_list and not quarantine_length == 0:
-                quarantined_origin_list[i] = quarantine_length
-                quarantined_list.add(i)
+            if np.random.sample() < noticeability_rate and not i in quarantined_list:
                 virusFound = True
-                constants_total['virusFoundStep'] = min(step, constants_total['virusFoundStep'])
+                if not quarantine_length == 0:
+                    quarantined_origin_list[i] = quarantine_length
+                    quarantined_list.add(i)
+                    constants_total['virusFoundStep'] = min(step, constants_total['virusFoundStep'])
 
-                # Add quarantine-creation loss
-                qc_loss = set()
-                qc_loss.add(i)
-                if contact_tracing > 0:
-                    for quar in recursive_quarantine([i],1):
-                        qc_loss.add(quar)
-                infotext['loss'] += len(qc_loss) * loss_matrix[0][1]
-                print(f"[DEBUG] Added {len(qc_loss) * loss_matrix[0][1]} loss due to: Quarantine creation")
+                    # Add quarantine-creation loss
+                    qc_loss = set()
+                    qc_loss.add(i)
+                    if contact_tracing > 0:
+                        temp_qlist = recursive_quarantine([i], 1)
+                        for quar in temp_qlist:
+                            qc_loss.add(quar)
+                    infotext['loss'] += len(qc_loss) * loss_matrix[0][1]
+
+                    if not disablePrintOutput:
+                        print(f"[DEBUG] Added {len(qc_loss) * loss_matrix[0][1]} loss due to: Quarantine creation")
 
             # Infect adjacent nodes
             isQuarantined = i in quarantined_list
@@ -339,7 +354,9 @@ def sir_model(G,
                         infotext['st'] -= 1
                         infotext['it'] += 1
                         infotext['loss'] += loss_matrix[0][0]
-                        print(f"[DEBUG] Added {loss_matrix[0][0]} loss due to: Infection creation")
+
+                        if not disablePrintOutput:
+                            print(f"[DEBUG] Added {loss_matrix[0][0]} loss due to: Infection creation")
                         
                         if doVisualization:
                             nodes_to_draw.add(j)
@@ -366,7 +383,9 @@ def sir_model(G,
                     infotext['ssw'] -= temp
                     infotext['is'] += temp
                     infotext['loss'] += temp * loss_matrix[0][0]
-                    print(f"[DEBUG] Added {temp*loss_matrix[0][0]} loss due to: Infection creation (singletons)")
+
+                    if not disablePrintOutput:
+                        print(f"[DEBUG] Added {temp*loss_matrix[0][0]} loss due to: Infection creation (singletons)")
                     
                     if doVisualization:
                         nodes_to_draw.add(i)
@@ -384,9 +403,11 @@ def sir_model(G,
 
         # Ticking loss
         infotext['loss'] += len(quarantined_list) * loss_matrix[1][1]
-        print(f"[DEBUG] Added {temp*loss_matrix[1][1]} loss due to: Quarantine ticking")
         infotext['loss'] += infotext['it'] * loss_matrix[1][0]
-        print(f"[DEBUG] Added {temp*loss_matrix[1][0]} loss due to: Infected ticking")
+
+        if not disablePrintOutput:
+            print(f"[DEBUG] Added {len(quarantined_list) * loss_matrix[1][1]} loss due to: Quarantine ticking")
+            print(f"[DEBUG] Added {infotext['it'] * loss_matrix[1][0]} loss due to: Infected ticking")
 
         # Draw all changes for this step in one go
         if doVisualization and nodes_to_draw:
