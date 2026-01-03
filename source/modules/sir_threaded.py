@@ -578,5 +578,5 @@ def simulate_threaded(i,
         print("Run: ", i)
     # print("Run: ", i, " --- Steps taken: ", len(infotext_total), " --- Loss: ", infotext_total[-1]['loss']['q'] + infotext_total[-1]['loss']['i'], " --- Q_Loss: ", infotext_total[-1]['loss']['q'], " --- I_Loss: ", infotext_total[-1]['loss']['i'])
     # print("Copy Time: ", copy_time, " --- Simulation Time: ", sim_time)
-    return_dict = {'loss': infotext_total[-1]['loss'], 'afterloss': infotext_total[-1]['afterloss']}
+    return_dict = {'loss': infotext_total[-1]['loss'], 'afterloss': infotext_total[-1]['afterloss'], 'rt': infotext_total[-1]['rt']}
     return return_dict
