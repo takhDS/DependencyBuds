@@ -213,6 +213,8 @@ def sir_model(G,
     infotext['rt'] = 0
     infotext['qt'] = 0
     infotext['loss'] = {'q': 0, 'i':0}
+    infotext['afterloss'] = {'q': 0, 'i':0}
+    infotext['i_prevented'] = 0
     if doSingletonReduction:
         infotext['ss'] = infotext['ssw'] + infotext['sso']
         infotext['is'] = 0
@@ -337,32 +339,37 @@ def sir_model(G,
                         for quar in temp_qlist:
                             qc_loss.add(quar)
                     infotext['loss']['q'] += len(qc_loss) * loss_matrix[0][1]
+                    if virusFound:
+                        infotext['afterloss']['q'] += len(qc_loss) * loss_matrix[0][1]
 
                     if not disablePrintOutput:
                         print(f"[DEBUG] Added {len(qc_loss) * loss_matrix[0][1]} loss due to: Quarantine creation")
 
             # Infect adjacent nodes
             isQuarantined = i in quarantined_list
-            if not isQuarantined:
-                adj = G.neighbors(i)
-                for j in adj:
-                    
-                    #Decide infection rate for node j
-                    if not infection_islist:
-                        new_infection_rate = infection_rate
-                    elif G.out_degree(j) > average_out_degree and infection_islist:
-                        new_infection_rate = infection_rate[0]
-                    elif G.out_degree(j) <= average_out_degree and infection_islist:
-                        new_infection_rate = infection_rate[1]
-                    
 
-                    if G.nodes[j].get('state', 0) == 0 and np.random.sample() < new_infection_rate:
+            adj = G.neighbors(i)
+            for j in adj:
+                #Decide infection rate for node j
+                if not infection_islist:
+                    new_infection_rate = infection_rate
+                elif G.out_degree(j) > average_out_degree and infection_islist:
+                    new_infection_rate = infection_rate[0]
+                elif G.out_degree(j) <= average_out_degree and infection_islist:
+                    new_infection_rate = infection_rate[1]
+                
+
+                if G.nodes[j].get('state', 0) == 0 and np.random.sample() < new_infection_rate:
+                    if not isQuarantined:
                         infected_list.add(j)
                         G.nodes[j]['state'] = 1
 
                         infotext['st'] -= 1
                         infotext['it'] += 1
                         infotext['loss']['i'] += loss_matrix[0][0]
+                        if virusFound:
+                            infotext['afterloss']['i'] += loss_matrix[0][0]
+
                         
 
                         if not disablePrintOutput:
@@ -370,9 +377,11 @@ def sir_model(G,
                         
                         if doVisualization:
                             nodes_to_draw.add(j)
+                else:
+                    infotext['i_prevented'] += 1
 
             # Infect singletons
-            if doSingletonReduction and not isQuarantined:
+            if doSingletonReduction:
                 #Decide infection rate for node i
                 if not infection_islist:
                     new_infection_rate = infection_rate
@@ -382,7 +391,7 @@ def sir_model(G,
                     new_infection_rate = infection_rate[1]
 
                 temp = np.random.binomial(n=G.nodes[i]['s_singletons'], p=new_infection_rate)
-                if temp > 0:
+                if temp > 0 and not isQuarantined:
                     has_infected_singletons.add(i)
                     G.nodes[i]['s_singletons'] -= temp
                     G.nodes[i]['i_singletons'] += temp
@@ -393,12 +402,16 @@ def sir_model(G,
                     infotext['ssw'] -= temp
                     infotext['is'] += temp
                     infotext['loss']['i'] += temp * loss_matrix[0][0]
+                    if virusFound:
+                        infotext['afterloss']['i'] += temp * loss_matrix[0][0]
 
                     if not disablePrintOutput:
                         print(f"[DEBUG] Added {temp*loss_matrix[0][0]} loss due to: Infection creation (singletons)")
                     
                     if doVisualization:
                         nodes_to_draw.add(i)
+                elif isQuarantined:
+                    infotext['i_prevented'] += temp
 
             # Recover infected nodes
             if np.random.sample() < recovery_rate and virusFound:
@@ -414,6 +427,9 @@ def sir_model(G,
         # Ticking loss
         infotext['loss']['q'] += len(quarantined_list) * loss_matrix[1][1]
         infotext['loss']['i'] += infotext['it'] * loss_matrix[1][0]
+        if virusFound:
+            infotext['afterloss']['q'] += len(quarantined_list) * loss_matrix[1][1]
+            infotext['afterloss']['i'] += infotext['it'] * loss_matrix[1][0]
 
         if not disablePrintOutput:
             print(f"[DEBUG] Added {len(quarantined_list) * loss_matrix[1][1]} loss due to: Quarantine ticking")
@@ -558,6 +574,9 @@ def simulate_threaded(i,
     _, _, _, _, infotext_total, constants_total = temp_packed
     sim_time = time.time() - sim_time
 
+    if i % 50:
+        print("Run: ", i)
     # print("Run: ", i, " --- Steps taken: ", len(infotext_total), " --- Loss: ", infotext_total[-1]['loss']['q'] + infotext_total[-1]['loss']['i'], " --- Q_Loss: ", infotext_total[-1]['loss']['q'], " --- I_Loss: ", infotext_total[-1]['loss']['i'])
     # print("Copy Time: ", copy_time, " --- Simulation Time: ", sim_time)
-    return infotext_total[-1]['loss']
+    return_dict = {'loss': infotext_total[-1]['loss'], 'afterloss': infotext_total[-1]['afterloss']}
+    return return_dict
