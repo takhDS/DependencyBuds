@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import os
 import copy
 from multiprocessing import Pool, cpu_count
+import time
 
 # Set the colors for simulation
 init_susceptible_color = np.array([0.1, 1, 0.1, 1])
@@ -106,6 +107,12 @@ def sir_model(G,
     # Ensure state is initialized (starts at 0)
     if nx.get_node_attributes(G, 'state') == {}:
         nx.set_node_attributes(G, 0, 'state')
+
+    # Reset singletons
+    for node in list(G.nodes):
+        G.nodes[node]['s_singletons'] = G.nodes[node]['total_singletons']
+    nx.set_node_attributes(G, 0, "i_singletons") # Infected singletons
+    nx.set_node_attributes(G, 0, "r_singletons") # Recovered/removed singletons
     
     # Infects the chosen random nodes
     for node in init_infected:
@@ -205,7 +212,7 @@ def sir_model(G,
     infotext['st'] = len(accessible_sus_nodes) - len(init_infected) + infotext['ssw']
     infotext['rt'] = 0
     infotext['qt'] = 0
-    infotext['loss'] = 0
+    infotext['loss'] = {'q': 0, 'i':0}
     if doSingletonReduction:
         infotext['ss'] = infotext['ssw'] + infotext['sso']
         infotext['is'] = 0
@@ -329,7 +336,7 @@ def sir_model(G,
                         temp_qlist = recursive_quarantine([i], 1)
                         for quar in temp_qlist:
                             qc_loss.add(quar)
-                    infotext['loss'] += len(qc_loss) * loss_matrix[0][1]
+                    infotext['loss']['q'] += len(qc_loss) * loss_matrix[0][1]
 
                     if not disablePrintOutput:
                         print(f"[DEBUG] Added {len(qc_loss) * loss_matrix[0][1]} loss due to: Quarantine creation")
@@ -355,7 +362,8 @@ def sir_model(G,
 
                         infotext['st'] -= 1
                         infotext['it'] += 1
-                        infotext['loss'] += loss_matrix[0][0]
+                        infotext['loss']['i'] += loss_matrix[0][0]
+                        
 
                         if not disablePrintOutput:
                             print(f"[DEBUG] Added {loss_matrix[0][0]} loss due to: Infection creation")
@@ -384,7 +392,7 @@ def sir_model(G,
                     infotext['ss'] -= temp
                     infotext['ssw'] -= temp
                     infotext['is'] += temp
-                    infotext['loss'] += temp * loss_matrix[0][0]
+                    infotext['loss']['i'] += temp * loss_matrix[0][0]
 
                     if not disablePrintOutput:
                         print(f"[DEBUG] Added {temp*loss_matrix[0][0]} loss due to: Infection creation (singletons)")
@@ -404,8 +412,8 @@ def sir_model(G,
                     nodes_to_draw.add(i)
 
         # Ticking loss
-        infotext['loss'] += len(quarantined_list) * loss_matrix[1][1]
-        infotext['loss'] += infotext['it'] * loss_matrix[1][0]
+        infotext['loss']['q'] += len(quarantined_list) * loss_matrix[1][1]
+        infotext['loss']['i'] += infotext['it'] * loss_matrix[1][0]
 
         if not disablePrintOutput:
             print(f"[DEBUG] Added {len(quarantined_list) * loss_matrix[1][1]} loss due to: Quarantine ticking")
@@ -503,7 +511,7 @@ def work(i, G, pos, nodelist_total, nodecolors_total, edgecolors_total, options,
         text_to_render += f"\nSusceptible Singletons: {info['ssw']}" # or ['ss']
         text_to_render += f"\nInfected Singletons: {info['is']}"
         text_to_render += f"\nRecovered Singletons: {info['rs']}"
-        text_to_render += f"\nLoss: {info['loss']}"
+        text_to_render += f"\nLoss: {info['loss']['q'] + info['loss']['i']}"
     plt.text(-0.25, 0.95, s=text_to_render, horizontalalignment='left', verticalalignment='center', transform=ax.transAxes)
 
     fig.subplots_adjust(left=0.2) 
@@ -523,11 +531,16 @@ def simulate_threaded(i,
                       quarantine_length,
                       contact_tracing,
                       loss_matrix,
+                      tempList,
                      ):
-    G_temp = copy.deepcopy(G)
 
+    G_temp = tempList[i]
+
+    copy_time = time.time()
     G_temp = G_temp.subgraph(get_accessible_sus_nodes(G_temp, init_infected)).copy()
+    copy_time = time.time() - copy_time
 
+    sim_time = time.time()
     temp_packed = sir_model(G_temp, G_full_sr, 
                                 init_infected=init_infected, 
                                 infection_rate=infection_rate, 
@@ -539,9 +552,12 @@ def simulate_threaded(i,
                                 contact_tracing=contact_tracing,
                                 loss_matrix=loss_matrix,
                                 network_type='full',
-                                disablePrintOutput=True
+                                disablePrintOutput=True,
+                                doVisualization=False
                                 )
     _, _, _, _, infotext_total, constants_total = temp_packed
+    sim_time = time.time() - sim_time
 
-    print("Run: ", i, " --- Steps taken: ", len(infotext_total), " --- Loss: ", infotext_total[-1]['loss'])
+    print("Run: ", i, " --- Steps taken: ", len(infotext_total), " --- Loss: ", infotext_total[-1]['loss']['q'] + infotext_total[-1]['loss']['i'], " --- Q_Loss: ", infotext_total[-1]['loss']['q'], " --- I_Loss: ", infotext_total[-1]['loss']['i'])
+    print("Copy Time: ", copy_time, " --- Simulation Time: ", sim_time)
     return infotext_total[-1]['loss']

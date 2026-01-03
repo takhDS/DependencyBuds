@@ -28,6 +28,7 @@ def singleton_reduction(G):
     Because of this, we can essentially reduce singletons to a number stored in its parent node, reducing the size of our network by 20%.
     """
     # Singleton information stored in parent.
+    nx.set_node_attributes(G, 0, "total_singletons") # Susceptible singletons
     nx.set_node_attributes(G, 0, "s_singletons") # Susceptible singletons
     nx.set_node_attributes(G, 0, "i_singletons") # Infected singletons
     nx.set_node_attributes(G, 0, "r_singletons") # Recovered/removed singletons
@@ -43,10 +44,12 @@ def singleton_reduction(G):
     # Store singletons as numbers
     for node in non_singletons:
         adj = G.neighbors(node)
-        G.nodes[node]['s_singletons'] = len([x for x in adj if x in singletons])
+        G.nodes[node]['total_singletons'] = len([x for x in adj if x in singletons])
+        G.nodes[node]['s_singletons'] = G.nodes[node]['total_singletons']
 
     # Remove nodes that are singletons
     print("Node count before singleton reduction: ", len(G.nodes()))
     G.remove_nodes_from(singletons)
 
     return G
+
