@@ -558,6 +558,6 @@ def simulate_threaded(i,
     _, _, _, _, infotext_total, constants_total = temp_packed
     sim_time = time.time() - sim_time
 
-    print("Run: ", i, " --- Steps taken: ", len(infotext_total), " --- Loss: ", infotext_total[-1]['loss']['q'] + infotext_total[-1]['loss']['i'], " --- Q_Loss: ", infotext_total[-1]['loss']['q'], " --- I_Loss: ", infotext_total[-1]['loss']['i'])
-    print("Copy Time: ", copy_time, " --- Simulation Time: ", sim_time)
+    # print("Run: ", i, " --- Steps taken: ", len(infotext_total), " --- Loss: ", infotext_total[-1]['loss']['q'] + infotext_total[-1]['loss']['i'], " --- Q_Loss: ", infotext_total[-1]['loss']['q'], " --- I_Loss: ", infotext_total[-1]['loss']['i'])
+    # print("Copy Time: ", copy_time, " --- Simulation Time: ", sim_time)
     return infotext_total[-1]['loss']
